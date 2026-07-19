@@ -24,22 +24,17 @@
 #include "fuse/fuse_i.h"
 #include "mount.h"
 
-DEFINE_STATIC_KEY_FALSE(ksu_init_rc_hook_key_false);
-DEFINE_STATIC_KEY_FALSE(ksu_input_hook_key_false);
-
 extern bool susfs_is_current_ksu_domain(void);
+extern void setup_selinux(const char *domain, struct cred *cred);
+extern struct cred *ksu_cred;
 
 #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
-DEFINE_STATIC_KEY_TRUE(susfs_log_key);
-#define SUSFS_LOGI(fmt, ...) if (static_branch_likely(&susfs_log_key)) pr_info("susfs:[%u][%d][%s] " fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
-#define SUSFS_LOGE(fmt, ...) if (static_branch_likely(&susfs_log_key)) pr_err("susfs:[%u][%d][%s]" fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
+DEFINE_STATIC_KEY_TRUE(susfs_is_log_enabled);
+#define SUSFS_LOGI(fmt, ...) if (static_branch_likely(&susfs_is_log_enabled)) pr_info("susfs:[%u][%d][%s] " fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
+#define SUSFS_LOGE(fmt, ...) if (static_branch_likely(&susfs_is_log_enabled)) pr_err("susfs:[%u][%d][%s]" fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
 #else
 #define SUSFS_LOGI(fmt, ...) 
 #define SUSFS_LOGE(fmt, ...) 
-#endif
-
-#ifndef FUSE_SUPER_MAGIC
-#define FUSE_SUPER_MAGIC 0x65735546
 #endif
 
 /* sus_path */
@@ -47,7 +42,6 @@ DEFINE_STATIC_KEY_TRUE(susfs_log_key);
 DEFINE_STATIC_SRCU(susfs_srcu_sus_path_loop);
 static DEFINE_MUTEX(susfs_mutex_lock_sus_path);
 static LIST_HEAD(LH_SUS_PATH_LOOP);
-
 const struct qstr susfs_fake_qstr_name = QSTR_INIT("..5.u.S", 7); // used to re-test the dcache lookup, make sure you don't have file named like this!!
 
 void susfs_add_sus_path(void __user **user_info) {
@@ -82,6 +76,7 @@ void susfs_add_sus_path(void __user **user_info) {
 			goto out_path_put_path;
 		}
 		set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags);
+		set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
 		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_mapping->flags: 0x%lx\n", 
 					info.target_pathname, fi->nodeid, fi->inode.i_ino, fi->inode.i_mapping->flags);
 		info.err = 0;
@@ -121,8 +116,8 @@ void susfs_add_sus_path_loop(void __user **user_info) {
 		info.err = -ENOMEM;
 		goto out_copy_to_user;
 	}
-	strncpy(new_list->info.target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
-	strncpy(new_list->target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+	strscpy(new_list->info.target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+	strscpy(new_list->target_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
 	INIT_LIST_HEAD(&new_list->list);
 	mutex_lock(&susfs_mutex_lock_sus_path);
 	list_add_tail_rcu(&new_list->list, &LH_SUS_PATH_LOOP);
@@ -136,11 +131,12 @@ out_copy_to_user:
 	SUSFS_LOGI("CMD_SUSFS_ADD_SUS_PATH_LOOP -> ret: %d\n", info.err);
 }
 
-void susfs_run_sus_path_loop(void) {
+static void susfs_run_sus_path_loop(void) {
 	struct st_susfs_sus_path_list *cursor = NULL;
 	struct path path;
 	struct inode *inode;
 	struct fuse_inode *fi = NULL;
+	const struct cred *saved = override_creds(ksu_cred);
 	int srcu_idx = srcu_read_lock(&susfs_srcu_sus_path_loop);
 
 	list_for_each_entry_rcu(cursor, &LH_SUS_PATH_LOOP, list) {
@@ -160,6 +156,7 @@ void susfs_run_sus_path_loop(void) {
 					continue;
 				}
 				set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags);
+				set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
 				SUSFS_LOGI("re-flag AS_FLAGS_SUS_PATH on path '%s', fi->inode.i_ino: '%lu', fi->inode.i_mapping->flags: 0x%lx\n",
 						cursor->target_pathname, fi->inode.i_ino, fi->inode.i_mapping->flags);
 			} else {
@@ -171,12 +168,16 @@ void susfs_run_sus_path_loop(void) {
 		}
 	}
 	srcu_read_unlock(&susfs_srcu_sus_path_loop, srcu_idx);
+	revert_creds(saved);
 }
 
 static inline bool is_i_uid_not_allowed(uid_t i_uid) {
 	return likely(current_uid().val != i_uid);
 }
 
+/* - Please note that path inside /sdcard will be still visible to MediaProvider module,
+ *   since the uid of path like /sdcard/TWRP will be the uid of your MediaProvider module.
+ */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 bool susfs_is_inode_sus_path(struct mnt_idmap* idmap, struct inode *inode)
 #else
@@ -229,13 +230,17 @@ bool susfs_is_inode_sus_path(struct inode *inode)
 	}
 	return false;
 }
+
+int susfs_get_data_path(struct path *path) {
+	return kern_path("/data", LOOKUP_FOLLOW, path);
+}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 
 /* sus_mount */
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 // - Default to false now so zygisk can pick up the sus mounts without the need to turn it off manually in post-fs-data stage
 //   otherwise user needs to turn it on in post-fs-data stage and turn it off in boot-completed stage
-bool susfs_hide_sus_mnts_for_non_su_procs = false;
+DEFINE_STATIC_KEY_FALSE(susfs_is_hide_sus_mnts_for_non_su_procs_enabled);
 
 void susfs_set_hide_sus_mnts_for_non_su_procs(void __user **user_info) {
 	struct st_susfs_hide_sus_mnts_for_non_su_procs info = {0};
@@ -245,8 +250,13 @@ void susfs_set_hide_sus_mnts_for_non_su_procs(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 	
-	WRITE_ONCE(susfs_hide_sus_mnts_for_non_su_procs, info.enabled);
-	SUSFS_LOGI("susfs_hide_sus_mnts_for_non_su_procs: %d\n", info.enabled);
+	if (info.enabled) {
+		static_branch_enable(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled);
+	} else {
+		static_branch_disable(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled);
+	}
+
+	SUSFS_LOGI("susfs_is_hide_sus_mnts_for_non_su_procs_enabled: %d\n", static_key_enabled(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled));
 	info.err = 0;
 out_copy_to_user:
 	if (copy_to_user(&((struct st_susfs_hide_sus_mnts_for_non_su_procs __user*)*user_info)->err, &info.err, sizeof(info.err))) {
@@ -603,7 +613,7 @@ out_spoof_kstat:
 /* spoof_uname */
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 static struct st_susfs_uname my_uname = {0};
-DEFINE_STATIC_KEY_TRUE(susfs_set_uname_key_true);
+DEFINE_STATIC_KEY_FALSE(susfs_is_uname_spoof_buffer_set);
 static DEFINE_SEQLOCK(susfs_uname_seqlock);
 
 void susfs_set_uname(void __user **user_info) {
@@ -623,17 +633,17 @@ void susfs_set_uname(void __user **user_info) {
 	if (!strcmp(info.release, "default")) {
 		strscpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
 	} else {
-		strncpy(my_uname.release, info.release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, info.release, __NEW_UTS_LEN);
 	}
 	if (!strcmp(info.version, "default")) {
 		strscpy(my_uname.version, utsname()->version, __NEW_UTS_LEN);
 	} else {
-		strncpy(my_uname.version, info.version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, info.version, __NEW_UTS_LEN);
 	}
 	write_sequnlock(&susfs_uname_seqlock);
 
-	if (!static_key_enabled(&susfs_set_uname_key_true))
-		static_branch_enable(&susfs_set_uname_key_true);
+	if (!static_key_enabled(&susfs_is_uname_spoof_buffer_set))
+		static_branch_enable(&susfs_is_uname_spoof_buffer_set);
 
 	SUSFS_LOGI("set spoofed release: '%s', version: '%s'\n",
 				my_uname.release, my_uname.version);
@@ -651,8 +661,8 @@ void susfs_spoof_uname(struct new_utsname* tmp) {
 
 	do {
 		seq = read_seqbegin(&susfs_uname_seqlock);
-		strncpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
-		strncpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
+		strscpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
+		strscpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
 	} while (read_seqretry(&susfs_uname_seqlock, seq));
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
@@ -668,10 +678,10 @@ void susfs_enable_log(void __user **user_info) {
 	}
 
 	if (info.enabled) {
-		static_branch_enable(&susfs_log_key);
+		static_branch_enable(&susfs_is_log_enabled);
 		pr_info("susfs: enable logging to kernel");
 	} else {
-		static_branch_disable(&susfs_log_key);
+		static_branch_disable(&susfs_is_log_enabled);
 		pr_info("susfs: disable logging to kernel");
 	}
 
@@ -687,7 +697,7 @@ out_copy_to_user:
 /* spoof_cmdline_or_bootconfig */
 #ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
 static char *fake_cmdline_or_bootconfig = NULL;
-DEFINE_STATIC_KEY_TRUE(susfs_set_fake_cmdline_or_bootconfig_key_true);
+DEFINE_STATIC_KEY_FALSE(susfs_is_fake_cmdline_or_bootconfig_buffer_set);
 static DEFINE_SEQLOCK(susfs_fake_cmdline_or_bootconfig_seqlock);
 
 void susfs_set_cmdline_or_bootconfig(void __user **user_info) {
@@ -721,15 +731,14 @@ void susfs_set_cmdline_or_bootconfig(void __user **user_info) {
 	}
 
 	write_seqlock(&susfs_fake_cmdline_or_bootconfig_seqlock);
-	strncpy(fake_cmdline_or_bootconfig,
+	strscpy(fake_cmdline_or_bootconfig,
 			info->fake_cmdline_or_bootconfig,
 			SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE - 1);
 	write_sequnlock(&susfs_fake_cmdline_or_bootconfig_seqlock);
 
-	if (!static_key_enabled(&susfs_set_fake_cmdline_or_bootconfig_key_true)) {
-		static_branch_enable(&susfs_set_fake_cmdline_or_bootconfig_key_true);
-		SUSFS_LOGI("fake_cmdline_or_bootconfig is set\n");
-	}
+	if (!static_key_enabled(&susfs_is_fake_cmdline_or_bootconfig_buffer_set))
+		static_branch_enable(&susfs_is_fake_cmdline_or_bootconfig_buffer_set);
+	SUSFS_LOGI("fake_cmdline_or_bootconfig is set\n");
 
 	info->err = 0;
 
@@ -850,8 +859,8 @@ void susfs_add_open_redirect(void __user **user_info) {
 	new_entry_redirected->reversed_lookup_only = true;
 	new_entry_redirected->spoofed_mnt_id = real_mount(target_path.mnt)->mnt_id;
 	memcpy(&new_entry_redirected->spoofed_kstatfs, &new_entry_target->spoofed_kstatfs, sizeof(struct kstatfs));
-	strncpy(new_entry_redirected->info.target_pathname, info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
-	strncpy(new_entry_redirected->info.redirected_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+	strscpy(new_entry_redirected->info.target_pathname, info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+	strscpy(new_entry_redirected->info.redirected_pathname, info.target_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
 
 	// check for existing entries, delete it first if so
 	mutex_lock(&susfs_mutex_lock_open_redirect);
@@ -1008,7 +1017,7 @@ int susfs_open_redirect_spoof_do_proc_readlink(struct inode *inode, char *tmp_bu
 				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 				return -ENAMETOOLONG;
 			}
-			strncpy(tmp_buf, entry->info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+			strscpy(tmp_buf, entry->info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
 			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 			return 0;
 		}
@@ -1077,7 +1086,7 @@ int susfs_open_redirect_spoof_show_map_vma(struct inode *inode, unsigned long *o
 					entry->info.target_pathname);
 			*out_ino = entry->redirected_ino;
 			*out_dev = entry->redirected_dev;
-			strncpy(spoofed_name, entry->info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+			strscpy(spoofed_name, entry->info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
 			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 			return 0;
 		}
@@ -1125,7 +1134,7 @@ out_copy_to_user:
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 
 /* susfs avc log spoofing */
-DEFINE_STATIC_KEY_TRUE(susfs_avc_log_spoofing_key_true);
+DEFINE_STATIC_KEY_FALSE(susfs_is_avc_log_spoofing_enabled);
 
 void susfs_set_avc_log_spoofing(void __user **user_info) {
 	struct st_susfs_avc_log_spoofing info = {0};
@@ -1136,10 +1145,10 @@ void susfs_set_avc_log_spoofing(void __user **user_info) {
 	}
 
 	if (info.enabled) {
-		static_branch_enable(&susfs_avc_log_spoofing_key_true);
+		static_branch_enable(&susfs_is_avc_log_spoofing_enabled);
 		SUSFS_LOGI("enabling susfs_avc_log_spoofing\n");
 	} else {
-		static_branch_disable(&susfs_avc_log_spoofing_key_true);
+		static_branch_disable(&susfs_is_avc_log_spoofing_enabled);
 		SUSFS_LOGI("disabling susfs_avc_log_spoofing\n");
 	}
 
@@ -1160,7 +1169,7 @@ static int copy_config_to_buf(const char *config_string, char *buf_ptr, size_t *
 		SUSFS_LOGE("bufsize is not big enough to hold the string.\n");
 		return -EINVAL;
 	}
-	strncpy(buf_ptr, config_string, tmp_size);
+	memcpy(buf_ptr, config_string, tmp_size);
 	return 0;
 }
 
@@ -1247,7 +1256,7 @@ void susfs_show_variant(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	strncpy(info.susfs_variant, SUSFS_VARIANT, SUSFS_MAX_VARIANT_BUFSIZE-1);
+	strscpy(info.susfs_variant, SUSFS_VARIANT, SUSFS_MAX_VARIANT_BUFSIZE-1);
 	info.err = 0;
 out_copy_to_user:
 	if (copy_to_user((struct st_susfs_variant __user*)*user_info, &info, sizeof(info))) {
@@ -1265,7 +1274,7 @@ void susfs_show_version(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	strncpy(info.susfs_version, SUSFS_VERSION, SUSFS_MAX_VERSION_BUFSIZE-1);
+	strscpy(info.susfs_version, SUSFS_VERSION, SUSFS_MAX_VERSION_BUFSIZE-1);
 	info.err = 0;
 out_copy_to_user:
 	if (copy_to_user((struct st_susfs_version __user*)*user_info, &info, sizeof(info))) {
@@ -1277,8 +1286,7 @@ out_copy_to_user:
 /* kthread for checking if /sdcard/Android is accessible via fsnoitfy */
 /* code is straightly borrowed from KernelSU's pkg_observer.c */
 #define SDCARD_ANDROID_PATH "/data/media/0/Android"
-extern void setup_selinux(const char *domain, struct cred *cred);
-DEFINE_STATIC_KEY_FALSE(susfs_set_sdcard_android_data_decrypted_key_false);
+DEFINE_STATIC_KEY_TRUE(susfs_is_sdcard_android_data_not_decrypted);
 
 struct watch_dir {
 	const char *path;
@@ -1304,8 +1312,8 @@ static void susfs_sdcard_cleanup_fn(struct work_struct *work)
 	struct fsnotify_group *grp;
 	struct inode *inode;
 
-	if (static_key_enabled(&susfs_set_sdcard_android_data_decrypted_key_false))
-		static_branch_disable(&susfs_set_sdcard_android_data_decrypted_key_false);
+	if (static_key_enabled(&susfs_is_sdcard_android_data_not_decrypted))
+		static_branch_disable(&susfs_is_sdcard_android_data_not_decrypted);
 	SUSFS_LOGI("/sdcard is decrypted\n");
 	SUSFS_LOGI("cleaning up fsnotify sdcard watch\n");
 
@@ -1411,7 +1419,7 @@ static int susfs_sdcard_monitor_fn(void *data)
 	commit_creds(cred);
 
 	if (!susfs_is_current_ksu_domain()) {
-		SUSFS_LOGE("domain is not su, exiting the thread\n");
+		SUSFS_LOGE("domain is not ksu, exiting the thread\n");
 		return -EINVAL;
 	}
 
@@ -1440,19 +1448,26 @@ void susfs_start_sdcard_monitor_fn(void) {
 	if (IS_ERR(kthread_run(susfs_sdcard_monitor_fn, NULL, "susfs_sdcard_monitor"))) {
 		SUSFS_LOGE("failed to create thread susfs_sdcard_monitor\n");
 		SUSFS_LOGI("/sdcard is forcibly set decrypted\n");
-		if (static_key_enabled(&susfs_set_sdcard_android_data_decrypted_key_false))
-			static_branch_disable(&susfs_set_sdcard_android_data_decrypted_key_false);
+		if (static_key_enabled(&susfs_is_sdcard_android_data_not_decrypted))
+			static_branch_disable(&susfs_is_sdcard_android_data_not_decrypted);
 	}
 }
 
+// - defer extra susfs works to workqueue after do_umount in ksu_handle_setresuid()
+//   so that we do not block there and reduce the risk of time side channel as much as possible.
+struct work_struct susfs_extra_works;
+static void susfs_run_extra_works(struct work_struct *work) {
+	if (!ksu_cred)
+		return;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	susfs_run_sus_path_loop();
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+}
+
 /* susfs_init */
-void susfs_init(void) {
-	static_branch_enable(&ksu_init_rc_hook_key_false);
-	static_branch_enable(&ksu_input_hook_key_false);
-	static_branch_enable(&susfs_set_sdcard_android_data_decrypted_key_false);
-	static_branch_disable(&susfs_set_uname_key_true);
-	static_branch_disable(&susfs_avc_log_spoofing_key_true);
-	static_branch_disable(&susfs_set_fake_cmdline_or_bootconfig_key_true);
+void susfs_init(void) {\
+	SUSFS_LOGI("Initializing susfs_extra_works\n");
+	INIT_WORK(&susfs_extra_works, susfs_run_extra_works);
 	SUSFS_LOGI("susfs is initialized! version: " SUSFS_VERSION " \n");
 }
 
