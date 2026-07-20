@@ -39,7 +39,7 @@ env:
 jobs:
   build:
     name: "Build Kernel (SUSFS=${{ inputs.enable_susfs || 'true' }}, Droidspaces=${{ inputs.enable_droidspaces || 'true' }})"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:
@@ -64,16 +64,15 @@ jobs:
       # ─── Clang 18 toolchain ──────────────────────────────────────────────────
       - name: Install Clang 18
         run: |
-          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 18
-          sudo ln -sf /usr/bin/clang-18   /usr/bin/clang
-          sudo ln -sf /usr/bin/ld.lld-18  /usr/bin/ld.lld
-          sudo ln -sf /usr/bin/llvm-ar-18 /usr/bin/llvm-ar
-          sudo ln -sf /usr/bin/llvm-nm-18 /usr/bin/llvm-nm
+          sudo apt-get install -y --no-install-recommends \
+            clang-18 lld-18 llvm-18
+          sudo ln -sf /usr/bin/clang-18        /usr/bin/clang
+          sudo ln -sf /usr/bin/ld.lld-18       /usr/bin/ld.lld
+          sudo ln -sf /usr/bin/llvm-ar-18      /usr/bin/llvm-ar
+          sudo ln -sf /usr/bin/llvm-nm-18      /usr/bin/llvm-nm
           sudo ln -sf /usr/bin/llvm-objcopy-18 /usr/bin/llvm-objcopy
           sudo ln -sf /usr/bin/llvm-objdump-18 /usr/bin/llvm-objdump
-          sudo ln -sf /usr/bin/llvm-strip-18    /usr/bin/llvm-strip
+          sudo ln -sf /usr/bin/llvm-strip-18   /usr/bin/llvm-strip
           clang --version
 
       # ─── Determine feature flags ──────────────────────────────────────────────
