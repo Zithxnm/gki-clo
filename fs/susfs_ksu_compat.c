@@ -17,10 +17,10 @@
 DEFINE_STATIC_KEY_FALSE(ksu_input_hook_key_false);
 EXPORT_SYMBOL_GPL(ksu_input_hook_key_false);
 
-u32 susfs_ksu_sid __read_mostly;
+u32 __weak susfs_ksu_sid;
 EXPORT_SYMBOL_GPL(susfs_ksu_sid);
 
-u32 susfs_priv_app_sid __read_mostly;
+u32 __weak susfs_priv_app_sid;
 EXPORT_SYMBOL_GPL(susfs_priv_app_sid);
 
 DEFINE_STATIC_KEY_TRUE(susfs_avc_log_spoofing_key_true);
