@@ -1,311 +1,497 @@
-name: Build Capybara CLO Kernel
+name: Build Kernel CI
 
 on:
   push:
-    branches:
-      - 6.6.77
-      - main
-  pull_request:
-    branches:
-      - 6.6.77
-      - main
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      root_manager:
-        description: "Root Manager (KSUN / RESUKISU / NONE)"
-        required: true
-        default: "KSUN"
-        type: choice
-        options:
-          - "KSUN"
-          - "RESUKISU"
-          - "NONE"
-      enable_susfs:
-        description: "Enable SUSFS support"
-        required: false
-        default: "true"
-        type: boolean
-      enable_droidspaces:
-        description: "Enable Droidspaces support"
-        required: false
-        default: "true"
-        type: boolean
-      build_ref:
-        description: "Branch or tag to build (leave empty to use the triggered ref)"
-        required: false
-        default: ""
-        type: string
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  schedule:
+    - cron: '0 17 * * *'  # 00:00 WIB (UTC+7)
 
 env:
-  KERNEL_DEFCONFIG: capybara_defconfig
-  ARCH: arm64
-  SUBARCH: arm64
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    name: "Build Kernel (Root=${{ inputs.root_manager || 'KSUN' }}, SUSFS=${{ inputs.enable_susfs || 'true' }}, Droidspaces=${{ inputs.enable_droidspaces || 'true' }})"
+  # JOB 1A: Build varian Standard (Hardened OFF)
+  build-kernel-standard:
+    name: "${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}-standard${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}"
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        hz: 
+          - { id: 100, name: powersave }
+          - { id: 250, name: balance }
+          - { id: 500, name: performance }
+          - { id: 1000, name: ultra-performance }
+        variant: [stock, root, susfs]
+        root: [none, ksu, ksu-next, sukisu, yukisu, resukisu]
+        hardened: [off]
+        bypasscharging: [off, on]
+        droidspaces: [off]
+        exclude:
+          - variant: stock
+            root: ksu
+          - variant: stock
+            root: ksu-next
+          - variant: stock
+            root: sukisu
+          - variant: stock
+            root: resukisu
+          - variant: root
+            root: none
+          - variant: susfs
+            root: none
+          - variant: stock
+            root: yukisu
 
     steps:
-      # ─── Checkout ────────────────────────────────────────────────────────────
-      - name: Checkout kernel source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.build_ref || github.ref }}
-
-      - name: Setup Root Manager
+      - name: Create Swap
         run: |
-          ROOT_MGR="${{ inputs.root_manager || 'KSUN' }}"
-          echo "Selected Root Manager: $ROOT_MGR"
-          
-          # Clean up any potential leftover symlink or folders
-          rm -rf KernelSU KernelSU-Next common/drivers/kernelsu drivers/kernelsu
-          
-          if [[ "$ROOT_MGR" == "KSUN" ]]; then
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
-            cd KernelSU-Next
-            git reset --hard HEAD
-            patch -p1 < ../patches/susfs-ksun-hooks.patch
-          elif [[ "$ROOT_MGR" == "RESUKISU" ]]; then
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
-          else
-            echo "Building without a root manager"
-          fi
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
 
-      # ─── System dependencies ─────────────────────────────────────────────────
-      - name: Install build dependencies
+      - uses: actions/checkout@v4
+        with: { path: gki-clo }
+
+      - name: Setup Build Environment
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential ca-certificates cpio curl \
-            flex git gcc make kmod libelf-dev libssl-dev \
-            lz4 python3 python3-dev rsync unzip zip zstd \
-            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            libncurses-dev device-tree-compiler pahole
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 clang lld llvm jq
 
-      # ─── Clang 18 toolchain ──────────────────────────────────────────────────
-      - name: Install Clang 18
+      - name: Download Clang Toolchain
         run: |
-          sudo apt-get install -y --no-install-recommends \
-            clang-18 lld-18 llvm-18
-          sudo ln -sf /usr/bin/clang-18        /usr/bin/clang
-          sudo ln -sf /usr/bin/ld.lld-18       /usr/bin/ld.lld
-          sudo ln -sf /usr/bin/llvm-ar-18      /usr/bin/llvm-ar
-          sudo ln -sf /usr/bin/llvm-nm-18      /usr/bin/llvm-nm
-          sudo ln -sf /usr/bin/llvm-objcopy-18 /usr/bin/llvm-objcopy
-          sudo ln -sf /usr/bin/llvm-objdump-18 /usr/bin/llvm-objdump
-          sudo ln -sf /usr/bin/llvm-strip-18   /usr/bin/llvm-strip
-          clang --version
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
 
-      # ─── Determine feature flags ──────────────────────────────────────────────
-      - name: Resolve feature toggles
-        id: flags
+      - name: Setup AnyKernel3
         run: |
-          # For push/PR events, fall back to enabling everything (change defaults below if needed)
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            ROOT_MGR="${{ inputs.root_manager }}"
-            ENABLE_SUSFS="${{ inputs.enable_susfs }}"
-            ENABLE_DROIDSPACES="${{ inputs.enable_droidspaces }}"
-          else
-            ROOT_MGR="KSUN"
-            ENABLE_SUSFS="true"
-            ENABLE_DROIDSPACES="true"
-          fi
-          echo "root_manager=${ROOT_MGR}" >> "$GITHUB_OUTPUT"
-          echo "enable_susfs=${ENABLE_SUSFS}" >> "$GITHUB_OUTPUT"
-          echo "enable_droidspaces=${ENABLE_DROIDSPACES}" >> "$GITHUB_OUTPUT"
+          cd gki-clo
+          [ ! -d "anykernel" ] && git clone https://github.com/osm0sis/AnyKernel3.git anykernel || true
 
-          # Build a human-readable suffix for the zip name
-          SUFFIX=""
-          [[ "$ROOT_MGR" != "NONE" ]]              && SUFFIX="${SUFFIX}-${ROOT_MGR}"
-          [[ "${ENABLE_SUSFS}" == "true" ]]        && SUFFIX="${SUFFIX}-SUSFS"
-          [[ "${ENABLE_DROIDSPACES}" == "true" ]]  && SUFFIX="${SUFFIX}-Droidspaces"
-          [[ -z "${SUFFIX}" ]]                     && SUFFIX="-Vanilla"
-          echo "suffix=${SUFFIX}" >> "$GITHUB_OUTPUT"
-
-      # ─── Kernel configuration ─────────────────────────────────────────────────
-      - name: Generate base defconfig
+      - name: Build Kernel
         run: |
-          make \
-            O="${{ github.workspace }}/out" \
-            ARCH=${{ env.ARCH }} \
-            SUBARCH=${{ env.SUBARCH }} \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CC=clang \
-            HOSTCC=gcc \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            KCFLAGS="-w" \
-            ${{ env.KERNEL_DEFCONFIG }}
+          cd gki-clo
+          chmod +x build.sh
+          ./build.sh \
+            hz=${{ matrix.hz.id }} \
+            variant=${{ matrix.variant }} \
+            root=${{ matrix.root }} \
+            hardened=${{ matrix.hardened }} \
+            bypasscharging=${{ matrix.bypasscharging }} \
+            droidspaces=${{ matrix.droidspaces }} \
+            lto=full
 
-      - name: Apply Root Manager and SUSFS config flags
-        run: |
-          ROOT_MGR="${{ steps.flags.outputs.root_manager }}"
-          ENABLE_SUSFS="${{ steps.flags.outputs.enable_susfs }}"
-          
-          if [[ "$ROOT_MGR" != "NONE" ]]; then
-            echo "Enabling CONFIG_KSU..."
-            ./scripts/config --file "${{ github.workspace }}/out/.config" -e CONFIG_KSU
-          else
-            echo "Disabling CONFIG_KSU..."
-            ./scripts/config --file "${{ github.workspace }}/out/.config" -d CONFIG_KSU
-          fi
-          
-          if [[ "$ENABLE_SUSFS" == "true" ]]; then
-            echo "Enabling SUSFS..."
-            ./scripts/config --file "${{ github.workspace }}/out/.config" \
-              -e CONFIG_KSU_SUSFS \
-              -e CONFIG_KSU_SUSFS_SUS_PATH \
-              -e CONFIG_KSU_SUSFS_SUS_MOUNT \
-              -e CONFIG_KSU_SUSFS_SUS_KSTAT \
-              -e CONFIG_KSU_SUSFS_SPOOF_UNAME \
-              -e CONFIG_KSU_SUSFS_ENABLE_LOG \
-              -e CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-              -e CONFIG_KSU_SUSFS_OPEN_REDIRECT \
-              -e CONFIG_KSU_SUSFS_SUS_MAP
-          else
-            echo "Disabling SUSFS..."
-            ./scripts/config --file "${{ github.workspace }}/out/.config" \
-              -d CONFIG_KSU_SUSFS \
-              -d CONFIG_KSU_SUSFS_SUS_PATH \
-              -d CONFIG_KSU_SUSFS_SUS_MOUNT \
-              -d CONFIG_KSU_SUSFS_SUS_KSTAT \
-              -d CONFIG_KSU_SUSFS_SPOOF_UNAME \
-              -d CONFIG_KSU_SUSFS_ENABLE_LOG \
-              -d CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-              -d CONFIG_KSU_SUSFS_OPEN_REDIRECT \
-              -d CONFIG_KSU_SUSFS_SUS_MAP
-          fi
-
-      - name: Apply Droidspaces config flags
-        if: steps.flags.outputs.enable_droidspaces == 'true'
-        run: |
-          echo "Enabling Droidspaces..."
-          ./scripts/config --file "${{ github.workspace }}/out/.config" \
-            -e CONFIG_SYSVIPC \
-            -e CONFIG_POSIX_MQUEUE \
-            -e CONFIG_USER_NS \
-            -e CONFIG_PID_NS \
-            -e CONFIG_IPC_NS \
-            -e CONFIG_DEVTMPFS \
-            -e CONFIG_NETFILTER_XT_MATCH_ADDRTYPE \
-            -e CONFIG_NETFILTER_XT_TARGET_REJECT \
-            -e CONFIG_NETFILTER_XT_TARGET_LOG \
-            -e CONFIG_NETFILTER_XT_MATCH_RECENT \
-            -e CONFIG_IP_SET \
-            -e CONFIG_IP_SET_HASH_IP \
-            -e CONFIG_IP_SET_HASH_NET \
-            -e CONFIG_NETFILTER_XT_SET \
-            -e CONFIG_TMPFS_POSIX_ACL \
-            -e CONFIG_TMPFS_XATTR
-
-      - name: Disable Droidspaces config flags
-        if: steps.flags.outputs.enable_droidspaces != 'true'
-        run: |
-          echo "Disabling Droidspaces..."
-          ./scripts/config --file "${{ github.workspace }}/out/.config" \
-            -d CONFIG_SYSVIPC \
-            -d CONFIG_POSIX_MQUEUE \
-            -d CONFIG_USER_NS \
-            -d CONFIG_PID_NS \
-            -d CONFIG_IPC_NS
-
-      - name: Resolve Kconfig dependencies (olddefconfig)
-        run: |
-          make \
-            O="${{ github.workspace }}/out" \
-            ARCH=${{ env.ARCH }} \
-            SUBARCH=${{ env.SUBARCH }} \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CC=clang \
-            HOSTCC=gcc \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            KCFLAGS="-w" \
-            olddefconfig
-
-      # ─── Build ────────────────────────────────────────────────────────────────
-      - name: Build kernel
-        run: |
-          make \
-            -j$(nproc) \
-            O="${{ github.workspace }}/out" \
-            ARCH=${{ env.ARCH }} \
-            SUBARCH=${{ env.SUBARCH }} \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CC=clang \
-            HOSTCC=gcc \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            KCFLAGS="-w"
-
-      # ─── Package with AnyKernel3 ─────────────────────────────────────────────
-      - name: Package kernel with AnyKernel3
-        id: package
-        run: |
-          ZIMAGE_DIR="${{ github.workspace }}/out/arch/arm64/boot"
-          TIME=$(date "+%Y%m%d-%H%M%S")
-          SUFFIX="${{ steps.flags.outputs.suffix }}"
-          ZIP_NAME="Capybara-CLO-${TIME}${SUFFIX}.zip"
-
-          TEMP_DIR="${{ runner.temp }}/anykernel_package"
-          cp -r "${{ github.workspace }}/anykernel" "${TEMP_DIR}"
-
-          # Copy the kernel image (try each variant in order of preference)
-          if [ -f "${ZIMAGE_DIR}/Image.gz-dtb" ]; then
-            cp -v "${ZIMAGE_DIR}/Image.gz-dtb" "${TEMP_DIR}/"
-          elif [ -f "${ZIMAGE_DIR}/Image.gz" ]; then
-            cp -v "${ZIMAGE_DIR}/Image.gz" "${TEMP_DIR}/"
-          elif [ -f "${ZIMAGE_DIR}/Image" ]; then
-            cp -v "${ZIMAGE_DIR}/Image" "${TEMP_DIR}/"
-          else
-            echo "::error::No kernel image found in ${ZIMAGE_DIR}"
-            exit 1
-          fi
-
-          cd "${TEMP_DIR}"
-          zip -r9 "${{ github.workspace }}/${ZIP_NAME}" ./*
-          cd -
-
-          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
-          echo "zip_path=${{ github.workspace }}/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
-
-          echo ""
-          echo "========================================"
-          echo "Kernel zip: ${ZIP_NAME}"
-          echo "Size:       $(du -h "${{ github.workspace }}/${ZIP_NAME}" | cut -f1)"
-          echo "SUSFS:       ${{ steps.flags.outputs.enable_susfs }}"
-          echo "Droidspaces: ${{ steps.flags.outputs.enable_droidspaces }}"
-          echo "========================================"
-
-      # ─── Upload artifact ─────────────────────────────────────────────────────
-      - name: Upload kernel zip
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package.outputs.zip_name }}
-          path: ${{ steps.package.outputs.zip_path }}
-          retention-days: 30
-          if-no-files-found: error
+          name: Capybara-CLO-${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}
+          path: gki-clo/Capybara-CLO-Release
+          retention-days: 7
 
-      # ─── Release (only on version tags) ──────────────────────────────────────
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+    # JOB 1A-DS: Build varian Standard (Hardened OFF, Droidspaces ON)
+  build-kernel-standard-droidspaces:
+    name: "${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}-standard${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}-droidspaces"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        hz: 
+          - { id: 100, name: powersave }
+          - { id: 250, name: balance }
+          - { id: 500, name: performance }
+          - { id: 1000, name: ultra-performance }
+        variant: [stock, root, susfs]
+        root: [none, ksu, ksu-next, sukisu, yukisu, resukisu]
+        hardened: [off]
+        bypasscharging: [off, on]
+        droidspaces: [on]
+        exclude:
+          - variant: stock
+            root: ksu
+          - variant: stock
+            root: ksu-next
+          - variant: stock
+            root: sukisu
+          - variant: stock
+            root: resukisu
+          - variant: root
+            root: none
+          - variant: susfs
+            root: none
+          - variant: stock
+            root: yukisu
+
+    steps:
+      - name: Create Swap
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
+
+      - uses: actions/checkout@v4
+        with: { path: gki-clo }
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 clang lld llvm jq
+
+      - name: Download Clang Toolchain
+        run: |
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+
+      - name: Setup AnyKernel3
+        run: |
+          cd gki-clo
+          [ ! -d "anykernel" ] && git clone https://github.com/osm0sis/AnyKernel3.git anykernel || true
+
+      - name: Build Kernel
+        run: |
+          cd gki-clo
+          chmod +x build.sh
+          ./build.sh \
+            hz=${{ matrix.hz.id }} \
+            variant=${{ matrix.variant }} \
+            root=${{ matrix.root }} \
+            hardened=${{ matrix.hardened }} \
+            bypasscharging=${{ matrix.bypasscharging }} \
+            droidspaces=${{ matrix.droidspaces }} \
+            lto=full
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capybara-CLO-${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}-droidspaces
+          path: gki-clo/Capybara-CLO-Release
+          retention-days: 7
+
+  # JOB 1B: Build varian Hardened (Hardened ON)
+  build-kernel-hardened:
+    name: "${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}-hardened${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        hz: 
+          - { id: 100, name: powersave }
+          - { id: 250, name: balance }
+          - { id: 500, name: performance }
+          - { id: 1000, name: ultra-performance }
+        variant: [stock, root, susfs]
+        root: [none, ksu, ksu-next, sukisu, yukisu, resukisu]
+        hardened: [on]
+        bypasscharging: [off, on]
+        droidspaces: [off]
+        exclude:
+          - variant: stock
+            root: ksu
+          - variant: stock
+            root: ksu-next
+          - variant: stock
+            root: sukisu
+          - variant: stock
+            root: resukisu
+          - variant: root
+            root: none
+          - variant: susfs
+            root: none
+          - variant: stock
+            root: yukisu
+
+    steps:
+      - name: Create Swap
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
+
+      - uses: actions/checkout@v4
+        with: { path: gki-clo }
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 clang lld llvm jq
+
+      - name: Download Clang Toolchain
+        run: |
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+
+      - name: Setup AnyKernel3
+        run: |
+          cd gki-clo
+          [ ! -d "anykernel" ] && git clone https://github.com/osm0sis/AnyKernel3.git anykernel || true
+
+      - name: Build Kernel
+        run: |
+          cd gki-clo
+          chmod +x build.sh
+          ./build.sh \
+            hz=${{ matrix.hz.id }} \
+            variant=${{ matrix.variant }} \
+            root=${{ matrix.root }} \
+            hardened=${{ matrix.hardened }} \
+            bypasscharging=${{ matrix.bypasscharging }} \
+            droidspaces=${{ matrix.droidspaces }} \
+            lto=full
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capybara-CLO-${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}-hardened${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}
+          path: gki-clo/Capybara-CLO-Release
+          retention-days: 7
+
+    # JOB 1B-DS: Build varian Hardened (Hardened ON, Droidspaces ON)
+  build-kernel-hardened-droidspaces:
+    name: "${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}-hardened${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}-droidspaces"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        hz: 
+          - { id: 100, name: powersave }
+          - { id: 250, name: balance }
+          - { id: 500, name: performance }
+          - { id: 1000, name: ultra-performance }
+        variant: [stock, root, susfs]
+        root: [none, ksu, ksu-next, sukisu, yukisu, resukisu]
+        hardened: [on]
+        bypasscharging: [off, on]
+        droidspaces: [on]
+        exclude:
+          - variant: stock
+            root: ksu
+          - variant: stock
+            root: ksu-next
+          - variant: stock
+            root: sukisu
+          - variant: stock
+            root: resukisu
+          - variant: root
+            root: none
+          - variant: susfs
+            root: none
+          - variant: stock
+            root: yukisu
+
+    steps:
+      - name: Create Swap
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
+
+      - uses: actions/checkout@v4
+        with: { path: gki-clo }
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev libncurses-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 clang lld llvm jq
+
+      - name: Download Clang Toolchain
+        run: |
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+
+      - name: Setup AnyKernel3
+        run: |
+          cd gki-clo
+          [ ! -d "anykernel" ] && git clone https://github.com/osm0sis/AnyKernel3.git anykernel || true
+
+      - name: Build Kernel
+        run: |
+          cd gki-clo
+          chmod +x build.sh
+          ./build.sh \
+            hz=${{ matrix.hz.id }} \
+            variant=${{ matrix.variant }} \
+            root=${{ matrix.root }} \
+            hardened=${{ matrix.hardened }} \
+            bypasscharging=${{ matrix.bypasscharging }} \
+            droidspaces=${{ matrix.droidspaces }} \
+            lto=full
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capybara-CLO-${{ matrix.variant == 'stock' && format('{0}-{1}', matrix.variant, matrix.hz.name) || format('{0}-{1}-{2}', matrix.variant, matrix.root, matrix.hz.name) }}-hardened${{ matrix.bypasscharging == 'on' && '-bypasscharging' || '' }}-droidspaces
+          path: gki-clo/Capybara-CLO-Release
+          retention-days: 7
+
+  # NOTE: APatch/FolkPatch builds removed from automated CI to reduce job count.
+  # Use build-custom.yml (workflow_dispatch) for manual APatch/FolkPatch builds.
+
+  release:
+    needs: [build-kernel-standard, build-kernel-standard-droidspaces, build-kernel-hardened, build-kernel-hardened-droidspaces]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Prepare assets
+        run: |
+          mkdir -p release_assets
+          find artifacts -type f -name "*.zip" -exec mv {} release_assets/ \; || true
+          find artifacts -type f -name "*.img" -exec mv {} release_assets/ \; || true
+
+      - name: Generate Release Body
+        run: |
+          python3 -c "
+          import os
+          
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_num = os.environ['GITHUB_RUN_NUMBER']
+          sha = os.environ['GITHUB_SHA']
+          base_url = f'https://github.com/{repo}/releases/download/build-{run_num}-{sha}'
+          
+          try:
+              zips = [f for f in os.listdir('release_assets') if f.endswith('.zip')]
+          except FileNotFoundError:
+              zips = []
+              
+          def get_link(variant, root, hz, kpm, hardened, bypass, droidspaces):
+              for f in zips:
+                  fl = f.lower()
+                  if variant not in fl: continue
+                  
+                  if root == 'ksu' and ('kernelsu' not in fl or 'next' in fl): continue
+                  if root == 'ksu-next' and 'next' not in fl: continue
+                  if root == 'sukisu' and ('sukisu' not in fl or 'resukisu' in fl or 'yukisu' in fl): continue
+                  if root == 'yukisu' and 'yukisu' not in fl: continue
+                  if root == 'resukisu' and 'resukisu' not in fl: continue
+                  if root == 'mambosu' and 'mambosu' not in fl: continue
+                  if root == 'none' and any(x in fl for x in ['kernelsu', 'sukisu', 'yukisu', 'resukisu', 'mambosu']): continue
+                  
+                  if hz == 'ultra-performance' and '-ultra-performance-' not in fl: continue
+                  if hz == 'performance' and ('-performance-' not in fl or '-ultra-performance-' in fl): continue
+                  if hz == 'powersave' and '-powersave-' not in fl: continue
+                  if hz == 'balance' and '-balance-' not in fl: continue
+                  
+                  if kpm and '-kpm' not in fl: continue
+                  if not kpm and '-kpm' in fl: continue
+                  
+                  if hardened and '-hardened' not in fl: continue
+                  if not hardened and '-hardened' in fl: continue
+                  
+                  if bypass and '-bypasscharging' not in fl: continue
+                  if not bypass and '-bypasscharging' in fl: continue
+                  
+                  if droidspaces and '-droidspaces' not in fl: continue
+                  if not droidspaces and '-droidspaces' in fl: continue
+                  
+                  label = '-'.join(filter(None, [variant, root if root != 'none' else '', hz, 'kpm' if kpm else '', 'hardened' if hardened else '', 'bypass' if bypass else '', 'droidspaces' if droidspaces else '']))
+                  return f'[{label}]({base_url}/{f})'
+              return '❌ Failed'
+              
+          def gen_table(title, rows, is_bypass, is_droidspaces):
+              out = [f'### {title}', '| Variant | Powersave | Balance | Performance | Ultra-Performance |', '|---|---|---|---|---|']
+              for r_title, v, r, k, h in rows:
+                  cols = [get_link(v, r, hz, k, h, is_bypass, is_droidspaces) for hz in ['powersave', 'balance', 'performance', 'ultra-performance']]
+                  out.append(f'| **{r_title}** | ' + ' | '.join(cols) + ' |')
+              return '\n'.join(out) + '\n\n' if len(out) > 3 else ''
+              
+          std = [
+              ('Stock', 'stock', 'none', False, False),
+              ('KernelSU', 'root', 'ksu', False, False),
+              ('KernelSU Next', 'root', 'ksu-next', False, False),
+              ('Sukisu', 'root', 'sukisu', False, False),
+              ('YukiSU', 'root', 'yukisu', False, False),
+              ('Resukisu', 'root', 'resukisu', False, False),
+              ('Mambosu', 'root', 'mambosu', False, False),
+          ]
+          susfs = [
+              ('KernelSU', 'susfs', 'ksu', False, False),
+              ('KernelSU Next', 'susfs', 'ksu-next', False, False),
+              ('Sukisu', 'susfs', 'sukisu', False, False),
+              ('YukiSU', 'susfs', 'yukisu', False, False),
+              ('Resukisu', 'susfs', 'resukisu', False, False),
+              ('Mambosu', 'susfs', 'mambosu', False, False),
+          ]
+          hard = [
+              ('Stock', 'stock', 'none', False, True),
+              ('KernelSU', 'root', 'ksu', False, True),
+              ('KernelSU Next', 'root', 'ksu-next', False, True),
+              ('Sukisu', 'root', 'sukisu', False, True),
+              ('YukiSU', 'root', 'yukisu', False, True),
+              ('Resukisu', 'root', 'resukisu', False, True),
+              ('Mambosu', 'root', 'mambosu', False, True),
+          ]
+          susfs_hard = [
+              ('KernelSU', 'susfs', 'ksu', False, True),
+              ('KernelSU Next', 'susfs', 'ksu-next', False, True),
+              ('Sukisu', 'susfs', 'sukisu', False, True),
+              ('YukiSU', 'susfs', 'yukisu', False, True),
+              ('Resukisu', 'susfs', 'resukisu', False, True),
+              ('Mambosu', 'susfs', 'mambosu', False, True),
+          ]
+          
+          with open('release_body.md', 'w') as f:
+              f.write('Automated kernel build.\n')
+              f.write(f'Commit: {sha}\n\n')
+              f.write('> [!CAUTION]\n> **BACKUP your boot.img** before flashing to recover from potential bootloops or other issues.\n\n')
+              f.write(gen_table('Standard / Root Builds', std, False, False))
+              f.write(gen_table('SUSFS ඞ', susfs, False, False))
+              f.write(gen_table('Hardened', hard, False, False))
+              f.write(gen_table('SUSFS ඞ + Hardened', susfs_hard, False, False))
+              
+              f.write('---\n\n## ⚡ Bypass Charging Variants (MCA Override)\n\n')
+              f.write(gen_table('Standard / Root Builds ⚡', std, True, False))
+              f.write(gen_table('SUSFS ඞ ⚡', susfs, True, False))
+              f.write(gen_table('Hardened ⚡', hard, True, False))
+              f.write(gen_table('SUSFS ඞ + Hardened ⚡', susfs_hard, True, False))
+
+              f.write('---\n\n## 📱 Droidspaces Variants\n\n')
+              f.write(gen_table('Standard / Root Builds 📱', std, False, True))
+              f.write(gen_table('SUSFS ඞ 📱', susfs, False, True))
+              f.write(gen_table('Hardened 📱', hard, False, True))
+              f.write(gen_table('SUSFS ඞ + Hardened 📱', susfs_hard, False, True))
+
+              f.write('---\n\n## ⚡📱 Bypass Charging + Droidspaces Variants\n\n')
+              f.write(gen_table('Standard / Root Builds ⚡📱', std, True, True))
+              f.write(gen_table('SUSFS ඞ ⚡📱', susfs, True, True))
+              f.write(gen_table('Hardened ⚡📱', hard, True, True))
+              f.write(gen_table('SUSFS ඞ + Hardened ⚡📱', susfs_hard, True, True))
+          "
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.package.outputs.zip_path }}
-          body: |
-            ## Capybara CLO Kernel
-
-            Built from `${{ github.sha }}`
-
-            | Feature      | Status |
-            |--------------|--------|
-            | SUSFS        | ${{ steps.flags.outputs.enable_susfs == 'true' && '✅ Enabled' || '❌ Disabled' }} |
-            | Droidspaces  | ${{ steps.flags.outputs.enable_droidspaces == 'true' && '✅ Enabled' || '❌ Disabled' }} |
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: build-${{ github.run_number }}-${{ github.sha }}
+          name: Build ${{ github.sha }}
+          body_path: release_body.md
+          files: release_assets/*
