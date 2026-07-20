@@ -1,0 +1,223 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index cec135d1..ee0ff484 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -4,6 +4,9 @@ kernelsu-objs += feature/kernel_umount.o
+ kernelsu-objs += feature/sulog.o
+ kernelsu-objs += feature/sucompat.o
+ 
++ifeq ($(CONFIG_KSU_SUSFS),y)
++kernelsu-objs += feature/susfs.o
++endif
+ kernelsu-objs += hook/lsm_hook.o
+ kernelsu-objs += hook/setuid_hook.o
+ kernelsu-objs += hook/syscall_event_bridge.o
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index db10afa7..94db9eaa 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -24,6 +24,9 @@
+ #include "feature/adb_root.h"
+ #include "feature/selinux_hide.h"
+ #include "feature/sulog.h"
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#endif
+ #include "infra/symbol_resolver.h"
+ 
+ #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
+@@ -142,6 +145,15 @@ int __init kernelsu_init(void)
+ 
+ 	ksu_supercalls_init();
+ 
++#ifdef CONFIG_KSU_SUSFS
++	susfs_init();
++	if (susfs_is_enabled()) {
++		pr_info("susfs enabled.\n");
++	} else {
++		pr_info("susfs disabled.\n");
++	}
++#endif
++
+ 	if (ksu_late_loaded) {
+ 		pr_info("late load mode, skipping kprobe hooks\n");
+ 
+diff --git a/kernel/feature/kernel_umount.c b/kernel/feature/kernel_umount.c
+index dd741202..32533897 100644
+--- a/kernel/feature/kernel_umount.c
++++ b/kernel/feature/kernel_umount.c
+@@ -83,6 +83,11 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
+ 		return 0;
+ 	}
+ 
++#ifdef CONFIG_KSU_SUSFS
++	if (susfs_is_current_proc_umounted())
++		return 0;
++#endif
++
+ 	// There are 6 scenarios:
+ 	// 1. Normal app: zygote -> appuid
+ 	// 2. Isolated process forked from zygote: zygote -> isolated_process
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index 553cb6ae..288cd5f5 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -8,7 +8,10 @@
+ #include <linux/uaccess.h>
+ #include <asm/current.h>
+ #include <linux/cred.h>
+-#include <linux/fs.h>
++#include <linux/susfs_def.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#endif
+ #include <linux/types.h>
+ #include <linux/version.h>
+ #include <linux/sched/task_stack.h>
+@@ -103,6 +106,10 @@ long ksu_handle_faccessat_sucompat(int orig_nr, struct pt_regs *regs)
+ 	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+ 
+ 	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
++#ifdef CONFIG_KSU_SUSFS
++		if (susfs_is_current_proc_umounted())
++			goto do_orig_facessat;
++#endif
+ 		old_cred = override_creds(ksu_cred);
+ 		if (is_ksud_exists()) {
+ 			ksu_compat_sulog('a');
+@@ -139,6 +146,10 @@ long ksu_handle_stat_sucompat(int orig_nr, struct pt_regs *regs)
+ 	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+ 
+ 	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
++#ifdef CONFIG_KSU_SUSFS
++		if (susfs_is_current_proc_umounted())
++			goto do_orig_stat;
++#endif
+ 		old_cred = override_creds(ksu_cred);
+ 		if (is_ksud_exists()) {
+ 			ksu_compat_sulog('s');
+@@ -186,8 +197,19 @@ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr,
+ 		goto do_orig_execve;
+ 	}
+ 
+-	if (likely(memcmp(path, su_path, sizeof(su_path))))
++	if (likely(memcmp(path, su_path, sizeof(su_path)))) {
++#ifdef CONFIG_KSU_SUSFS
++		if (likely(!strstr(path, "/app_process") && !strstr(path, "/adbd"))) {
++			susfs_set_current_proc_umounted();
++		}
++#endif
++		goto do_orig_execve;
++	}
++
++#ifdef CONFIG_KSU_SUSFS
++	if (susfs_is_current_proc_umounted())
+ 		goto do_orig_execve;
++#endif
+ 
+ 	ksu_compat_sulog('x');
+ 	pr_info("sys_execve su found\n");
+diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
+index 3cccc780..839d4545 100644
+--- a/kernel/hook/setuid_hook.c
++++ b/kernel/hook/setuid_hook.c
+@@ -53,6 +53,13 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+     // Handle kernel umount
+     ksu_handle_umount(old_uid, new_uid);
+ 
++#ifdef CONFIG_KSU_SUSFS
++    extern struct work_struct susfs_extra_works;
++    if (!work_pending(&susfs_extra_works))
++        schedule_work(&susfs_extra_works);
++    susfs_set_current_proc_umounted();
++#endif
++
+     return 0;
+ }
+ 
+diff --git a/kernel/hook/syscall_event_bridge.c b/kernel/hook/syscall_event_bridge.c
+index f866a498..dfabef57 100644
+--- a/kernel/hook/syscall_event_bridge.c
++++ b/kernel/hook/syscall_event_bridge.c
+@@ -18,6 +18,9 @@
+ #include "hook/syscall_hook.h"
+ #include "hook/syscall_event_bridge.h"
+ #include "feature/adb_root.h"
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs_def.h>
++#endif
+ 
+ static int ksu_handle_init_mark_tracker(const char __user **filename_user)
+ {
+@@ -42,6 +45,9 @@ static int ksu_handle_init_mark_tracker(const char __user **filename_user)
+     } else if (likely(strstr(path, "/app_process") == NULL && strstr(path, "/adbd") == NULL)) {
+         pr_info("hook_manager: unmark %d exec %s\n", current->pid, path);
+         ksu_clear_task_tracepoint_flag_if_needed(current);
++#ifdef CONFIG_KSU_SUSFS
++        susfs_set_current_proc_umounted();
++#endif
+     }
+ 
+     return 0;
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 902631d9..da3d0801 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -5,6 +5,9 @@
+ #include <linux/uaccess.h>
+ #include <linux/version.h>
+ #include <linux/thread_info.h>
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#endif
+ #include "uapi/supercall.h"
+ #include "supercall/internal.h"
+ #include "arch.h" // IWYU pragma: keep
+@@ -128,6 +131,9 @@ static int do_report_event(void __user *arg)
+             } else {
+                 pr_info("boot_complete triggered\n");
+                 on_boot_completed();
++#ifdef CONFIG_KSU_SUSFS
++                susfs_start_sdcard_monitor_fn();
++#endif
+             }
+         }
+         break;
+@@ -954,6 +960,37 @@ long ksu_supercall_handle_ioctl(unsigned int cmd, void __user *argp)
+     pr_info("ksu ioctl: cmd=0x%x from uid=%d\n", cmd, current_uid().val);
+ #endif
+ 
++#ifdef CONFIG_KSU_SUSFS
++    switch (cmd) {
++    case SUSFS_CMD_SUS_SU:
++        return ksu_handle_sus_su(argp);
++    case SUSFS_CMD_SUS_KSTAT:
++        return ksu_handle_sus_kstat(argp);
++    case SUSFS_CMD_SUS_UMOUNT:
++        return ksu_handle_sus_umount(argp);
++    case SUSFS_CMD_SUS_PATH:
++        return ksu_handle_sus_path(argp);
++    case SUSFS_CMD_SUS_PIN:
++        return ksu_handle_sus_pin(argp);
++    case SUSFS_CMD_SUS_MOUNT:
++        return ksu_handle_sus_mount(argp);
++    case SUSFS_CMD_SUS_KSTAT_OVERRIDE:
++        return ksu_handle_sus_kstat_override(argp);
++    case SUSFS_CMD_SUS_ENABLE_LOG:
++        return ksu_handle_sus_enable_log(argp);
++    case SUSFS_CMD_SUS_SHOW_LOG:
++        return ksu_handle_sus_show_log(argp);
++    case SUSFS_CMD_SUS_DUMP_UMOUNT:
++        return ksu_handle_sus_dump_umount(argp);
++    case SUSFS_CMD_SUS_GET_SPOOF_KSTAT_FD:
++        return ksu_handle_sus_get_spoof_kstat_fd(argp);
++    case SUSFS_CMD_SUS_ROM_CMD:
++        return ksu_handle_sus_rom_cmd(argp);
++    default:
++        break;
++    }
++#endif
++
+     for (i = 0; ksu_ioctl_handlers[i].handler; i++) {
+         if (cmd == ksu_ioctl_handlers[i].cmd) {
+             // Check permission first

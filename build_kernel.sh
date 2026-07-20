@@ -30,6 +30,16 @@ if [[ -z "${ENABLE_DROIDSPACES}" ]]; then
 fi
 echo "Building with: SUSFS=${ENABLE_SUSFS}, Droidspaces=${ENABLE_DROIDSPACES}"
 
+# Setup KernelSU-Next dynamically (proper method)
+echo "Setting up KernelSU-Next..."
+curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+cd KernelSU-Next
+# Reset any previous patches to ensure a clean state before patching
+git reset --hard HEAD
+# Apply our hand-stitched SUSFS hooks
+patch -p1 < ../patches/susfs-ksun-hooks.patch
+cd ..
+
 # Generate the base configuration
 make O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" $KERNEL_DEFCONFIG || exit 1
 

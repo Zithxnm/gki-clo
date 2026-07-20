@@ -49,14 +49,12 @@ jobs:
         with:
           ref: ${{ inputs.build_ref || github.ref }}
           fetch-depth: 0
-          submodules: recursive
 
-      # KernelSU-Next Kbuild computes the kernel version as 30000 + git-rev-count.
-      # A shallow submodule clone gives rev-count=1 → version 30001.
-      # Ensure the submodule has full history so the version is correct.
-      - name: Unshallow KernelSU-Next submodule
+      - name: Setup KernelSU-Next
         run: |
-          git -C KernelSU-Next fetch --unshallow 2>/dev/null || true
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+          cd KernelSU-Next
+          patch -p1 < ../patches/susfs-ksun-hooks.patch
 
       # ─── System dependencies ─────────────────────────────────────────────────
       - name: Install build dependencies
