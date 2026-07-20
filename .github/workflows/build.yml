@@ -1,0 +1,262 @@
+name: Build Capybara CLO Kernel
+
+on:
+  push:
+    branches:
+      - origin/6.6.77
+      - main
+  pull_request:
+    branches:
+      - origin/6.6.77
+      - main
+  workflow_dispatch:
+    inputs:
+      enable_susfs:
+        description: "Enable SUSFS support"
+        required: false
+        default: "true"
+        type: boolean
+      enable_droidspaces:
+        description: "Enable Droidspaces support"
+        required: false
+        default: "true"
+        type: boolean
+      build_ref:
+        description: "Branch or tag to build (leave empty to use the triggered ref)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Clang version from build.config.constants
+  CLANG_VERSION: r510928
+  KERNEL_DEFCONFIG: capybara_defconfig
+  ARCH: arm64
+  SUBARCH: arm64
+
+jobs:
+  build:
+    name: "Build Kernel (SUSFS=${{ inputs.enable_susfs || 'true' }}, Droidspaces=${{ inputs.enable_droidspaces || 'true' }})"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      # ─── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build_ref || github.ref }}
+          fetch-depth: 1
+
+      # ─── System dependencies ─────────────────────────────────────────────────
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ca-certificates cpio curl \
+            flex git kmod libelf-dev libssl-dev \
+            lz4 python3 rsync unzip zip zstd \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            libncurses-dev device-tree-compiler
+
+      # ─── Clang toolchain ─────────────────────────────────────────────────────
+      - name: Cache Clang toolchain
+        id: cache-clang
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/toolchains/clang
+          key: clang-${{ env.CLANG_VERSION }}
+
+      - name: Download Clang ${{ env.CLANG_VERSION }}
+        if: steps.cache-clang.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "${{ github.workspace }}/toolchains/clang"
+          curl -fsSL \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-${{ env.CLANG_VERSION }}.tar.gz" \
+            -o /tmp/clang.tar.gz
+          tar -C "${{ github.workspace }}/toolchains/clang" -xzf /tmp/clang.tar.gz
+          rm /tmp/clang.tar.gz
+
+      - name: Add Clang to PATH
+        run: echo "${{ github.workspace }}/toolchains/clang/bin" >> "$GITHUB_PATH"
+
+      # ─── Determine feature flags ──────────────────────────────────────────────
+      - name: Resolve feature toggles
+        id: flags
+        run: |
+          # For push/PR events, fall back to enabling everything (change defaults below if needed)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENABLE_SUSFS="${{ inputs.enable_susfs }}"
+            ENABLE_DROIDSPACES="${{ inputs.enable_droidspaces }}"
+          else
+            ENABLE_SUSFS="true"
+            ENABLE_DROIDSPACES="true"
+          fi
+          echo "enable_susfs=${ENABLE_SUSFS}" >> "$GITHUB_OUTPUT"
+          echo "enable_droidspaces=${ENABLE_DROIDSPACES}" >> "$GITHUB_OUTPUT"
+
+          # Build a human-readable suffix for the zip name
+          SUFFIX=""
+          [[ "${ENABLE_SUSFS}" == "true" ]]        && SUFFIX="${SUFFIX}-SUSFS"
+          [[ "${ENABLE_DROIDSPACES}" == "true" ]]  && SUFFIX="${SUFFIX}-Droidspaces"
+          [[ -z "${SUFFIX}" ]]                     && SUFFIX="-Vanilla"
+          echo "suffix=${SUFFIX}" >> "$GITHUB_OUTPUT"
+
+      # ─── Kernel configuration ─────────────────────────────────────────────────
+      - name: Generate base defconfig
+        run: |
+          make \
+            O="${{ github.workspace }}/out" \
+            CC=clang \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            KCFLAGS="-w" \
+            ARCH=${{ env.ARCH }} \
+            SUBARCH=${{ env.SUBARCH }} \
+            ${{ env.KERNEL_DEFCONFIG }}
+
+      - name: Apply SUSFS config flags
+        if: steps.flags.outputs.enable_susfs == 'true'
+        run: |
+          echo "Enabling SUSFS..."
+          ./scripts/config --file "${{ github.workspace }}/out/.config" \
+            -e CONFIG_KSU \
+            -e CONFIG_KSU_SUSFS \
+            -e CONFIG_KSU_SUSFS_SUS_PATH
+
+      - name: Disable SUSFS config flags
+        if: steps.flags.outputs.enable_susfs != 'true'
+        run: |
+          echo "Disabling SUSFS..."
+          ./scripts/config --file "${{ github.workspace }}/out/.config" \
+            -d CONFIG_KSU \
+            -d CONFIG_KSU_SUSFS \
+            -d CONFIG_KSU_SUSFS_SUS_PATH
+
+      - name: Apply Droidspaces config flags
+        if: steps.flags.outputs.enable_droidspaces == 'true'
+        run: |
+          echo "Enabling Droidspaces..."
+          ./scripts/config --file "${{ github.workspace }}/out/.config" \
+            -e CONFIG_SYSVIPC \
+            -e CONFIG_POSIX_MQUEUE \
+            -e CONFIG_USER_NS \
+            -e CONFIG_PID_NS \
+            -e CONFIG_IPC_NS \
+            -e CONFIG_DEVTMPFS \
+            -e CONFIG_NETFILTER_XT_MATCH_ADDRTYPE \
+            -e CONFIG_NETFILTER_XT_TARGET_REJECT \
+            -e CONFIG_NETFILTER_XT_TARGET_LOG \
+            -e CONFIG_NETFILTER_XT_MATCH_RECENT \
+            -e CONFIG_IP_SET \
+            -e CONFIG_IP_SET_HASH_IP \
+            -e CONFIG_IP_SET_HASH_NET \
+            -e CONFIG_NETFILTER_XT_SET \
+            -e CONFIG_TMPFS_POSIX_ACL \
+            -e CONFIG_TMPFS_XATTR
+
+      - name: Disable Droidspaces config flags
+        if: steps.flags.outputs.enable_droidspaces != 'true'
+        run: |
+          echo "Disabling Droidspaces..."
+          ./scripts/config --file "${{ github.workspace }}/out/.config" \
+            -d CONFIG_SYSVIPC \
+            -d CONFIG_POSIX_MQUEUE \
+            -d CONFIG_USER_NS \
+            -d CONFIG_PID_NS \
+            -d CONFIG_IPC_NS
+
+      - name: Resolve Kconfig dependencies (olddefconfig)
+        run: |
+          make \
+            O="${{ github.workspace }}/out" \
+            CC=clang \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            KCFLAGS="-w" \
+            ARCH=${{ env.ARCH }} \
+            SUBARCH=${{ env.SUBARCH }} \
+            olddefconfig
+
+      # ─── Build ────────────────────────────────────────────────────────────────
+      - name: Build kernel
+        run: |
+          make \
+            -j$(nproc) \
+            O="${{ github.workspace }}/out" \
+            CC=clang \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            KCFLAGS="-w" \
+            ARCH=${{ env.ARCH }} \
+            SUBARCH=${{ env.SUBARCH }}
+
+      # ─── Package with AnyKernel3 ─────────────────────────────────────────────
+      - name: Package kernel with AnyKernel3
+        id: package
+        run: |
+          ZIMAGE_DIR="${{ github.workspace }}/out/arch/arm64/boot"
+          TIME=$(date "+%Y%m%d-%H%M%S")
+          SUFFIX="${{ steps.flags.outputs.suffix }}"
+          ZIP_NAME="Capybara-CLO-${TIME}${SUFFIX}.zip"
+
+          TEMP_DIR="${{ runner.temp }}/anykernel_package"
+          cp -r "${{ github.workspace }}/anykernel" "${TEMP_DIR}"
+
+          # Copy the kernel image (try each variant in order of preference)
+          if [ -f "${ZIMAGE_DIR}/Image.gz-dtb" ]; then
+            cp -v "${ZIMAGE_DIR}/Image.gz-dtb" "${TEMP_DIR}/"
+          elif [ -f "${ZIMAGE_DIR}/Image.gz" ]; then
+            cp -v "${ZIMAGE_DIR}/Image.gz" "${TEMP_DIR}/"
+          elif [ -f "${ZIMAGE_DIR}/Image" ]; then
+            cp -v "${ZIMAGE_DIR}/Image" "${TEMP_DIR}/"
+          else
+            echo "::error::No kernel image found in ${ZIMAGE_DIR}"
+            exit 1
+          fi
+
+          cd "${TEMP_DIR}"
+          zip -r9 "${{ github.workspace }}/${ZIP_NAME}" ./*
+          cd -
+
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "zip_path=${{ github.workspace }}/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "========================================"
+          echo "Kernel zip: ${ZIP_NAME}"
+          echo "Size:       $(du -h "${{ github.workspace }}/${ZIP_NAME}" | cut -f1)"
+          echo "SUSFS:       ${{ steps.flags.outputs.enable_susfs }}"
+          echo "Droidspaces: ${{ steps.flags.outputs.enable_droidspaces }}"
+          echo "========================================"
+
+      # ─── Upload artifact ─────────────────────────────────────────────────────
+      - name: Upload kernel zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_path }}
+          retention-days: 30
+          if-no-files-found: error
+
+      # ─── Release (only on version tags) ──────────────────────────────────────
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip_path }}
+          body: |
+            ## Capybara CLO Kernel
+
+            Built from `${{ github.sha }}`
+
+            | Feature      | Status |
+            |--------------|--------|
+            | SUSFS        | ${{ steps.flags.outputs.enable_susfs == 'true' && '✅ Enabled' || '❌ Disabled' }} |
+            | Droidspaces  | ${{ steps.flags.outputs.enable_droidspaces == 'true' && '✅ Enabled' || '❌ Disabled' }} |
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
