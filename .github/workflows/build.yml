@@ -11,6 +11,15 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      root_manager:
+        description: "Root Manager (KSUN / RESUKISU / NONE)"
+        required: true
+        default: "KSUN"
+        type: choice
+        options:
+          - "KSUN"
+          - "RESUKISU"
+          - "NONE"
       enable_susfs:
         description: "Enable SUSFS support"
         required: false
@@ -38,7 +47,7 @@ env:
 
 jobs:
   build:
-    name: "Build Kernel (SUSFS=${{ inputs.enable_susfs || 'true' }}, Droidspaces=${{ inputs.enable_droidspaces || 'true' }})"
+    name: "Build Kernel (Root=${{ inputs.root_manager || 'KSUN' }}, SUSFS=${{ inputs.enable_susfs || 'true' }}, Droidspaces=${{ inputs.enable_droidspaces || 'true' }})"
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
@@ -48,15 +57,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.build_ref || github.ref }}
-          fetch-depth: 0
-          submodules: recursive
 
-      # KernelSU-Next Kbuild computes the kernel version as 30000 + git-rev-count.
-      # A shallow submodule clone gives rev-count=1 → version 30001.
-      # Ensure the submodule has full history so the version is correct.
-      - name: Unshallow KernelSU-Next submodule
+      - name: Setup Root Manager
         run: |
-          git -C KernelSU-Next fetch --unshallow 2>/dev/null || true
+          ROOT_MGR="${{ inputs.root_manager || 'KSUN' }}"
+          echo "Selected Root Manager: $ROOT_MGR"
+          
+          # Clean up any potential leftover symlink or folders
+          rm -rf KernelSU KernelSU-Next common/drivers/kernelsu drivers/kernelsu
+          
+          if [[ "$ROOT_MGR" == "KSUN" ]]; then
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+            cd KernelSU-Next
+            git reset --hard HEAD
+            patch -p1 < ../patches/susfs-ksun-hooks.patch
+          elif [[ "$ROOT_MGR" == "RESUKISU" ]]; then
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+          else
+            echo "Building without a root manager"
+          fi
 
       # ─── System dependencies ─────────────────────────────────────────────────
       - name: Install build dependencies
@@ -89,17 +108,21 @@ jobs:
         run: |
           # For push/PR events, fall back to enabling everything (change defaults below if needed)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ROOT_MGR="${{ inputs.root_manager }}"
             ENABLE_SUSFS="${{ inputs.enable_susfs }}"
             ENABLE_DROIDSPACES="${{ inputs.enable_droidspaces }}"
           else
+            ROOT_MGR="KSUN"
             ENABLE_SUSFS="true"
             ENABLE_DROIDSPACES="true"
           fi
+          echo "root_manager=${ROOT_MGR}" >> "$GITHUB_OUTPUT"
           echo "enable_susfs=${ENABLE_SUSFS}" >> "$GITHUB_OUTPUT"
           echo "enable_droidspaces=${ENABLE_DROIDSPACES}" >> "$GITHUB_OUTPUT"
 
           # Build a human-readable suffix for the zip name
           SUFFIX=""
+          [[ "$ROOT_MGR" != "NONE" ]]              && SUFFIX="${SUFFIX}-${ROOT_MGR}"
           [[ "${ENABLE_SUSFS}" == "true" ]]        && SUFFIX="${SUFFIX}-SUSFS"
           [[ "${ENABLE_DROIDSPACES}" == "true" ]]  && SUFFIX="${SUFFIX}-Droidspaces"
           [[ -z "${SUFFIX}" ]]                     && SUFFIX="-Vanilla"
@@ -120,23 +143,44 @@ jobs:
             KCFLAGS="-w" \
             ${{ env.KERNEL_DEFCONFIG }}
 
-      - name: Apply SUSFS config flags
-        if: steps.flags.outputs.enable_susfs == 'true'
+      - name: Apply Root Manager and SUSFS config flags
         run: |
-          echo "Enabling SUSFS..."
-          ./scripts/config --file "${{ github.workspace }}/out/.config" \
-            -e CONFIG_KSU \
-            -e CONFIG_KSU_SUSFS \
-            -e CONFIG_KSU_SUSFS_SUS_PATH
-
-      - name: Disable SUSFS config flags
-        if: steps.flags.outputs.enable_susfs != 'true'
-        run: |
-          echo "Disabling SUSFS..."
-          ./scripts/config --file "${{ github.workspace }}/out/.config" \
-            -d CONFIG_KSU \
-            -d CONFIG_KSU_SUSFS \
-            -d CONFIG_KSU_SUSFS_SUS_PATH
+          ROOT_MGR="${{ steps.flags.outputs.root_manager }}"
+          ENABLE_SUSFS="${{ steps.flags.outputs.enable_susfs }}"
+          
+          if [[ "$ROOT_MGR" != "NONE" ]]; then
+            echo "Enabling CONFIG_KSU..."
+            ./scripts/config --file "${{ github.workspace }}/out/.config" -e CONFIG_KSU
+          else
+            echo "Disabling CONFIG_KSU..."
+            ./scripts/config --file "${{ github.workspace }}/out/.config" -d CONFIG_KSU
+          fi
+          
+          if [[ "$ENABLE_SUSFS" == "true" ]]; then
+            echo "Enabling SUSFS..."
+            ./scripts/config --file "${{ github.workspace }}/out/.config" \
+              -e CONFIG_KSU_SUSFS \
+              -e CONFIG_KSU_SUSFS_SUS_PATH \
+              -e CONFIG_KSU_SUSFS_SUS_MOUNT \
+              -e CONFIG_KSU_SUSFS_SUS_KSTAT \
+              -e CONFIG_KSU_SUSFS_SPOOF_UNAME \
+              -e CONFIG_KSU_SUSFS_ENABLE_LOG \
+              -e CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+              -e CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+              -e CONFIG_KSU_SUSFS_SUS_MAP
+          else
+            echo "Disabling SUSFS..."
+            ./scripts/config --file "${{ github.workspace }}/out/.config" \
+              -d CONFIG_KSU_SUSFS \
+              -d CONFIG_KSU_SUSFS_SUS_PATH \
+              -d CONFIG_KSU_SUSFS_SUS_MOUNT \
+              -d CONFIG_KSU_SUSFS_SUS_KSTAT \
+              -d CONFIG_KSU_SUSFS_SPOOF_UNAME \
+              -d CONFIG_KSU_SUSFS_ENABLE_LOG \
+              -d CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+              -d CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+              -d CONFIG_KSU_SUSFS_SUS_MAP
+          fi
 
       - name: Apply Droidspaces config flags
         if: steps.flags.outputs.enable_droidspaces == 'true'

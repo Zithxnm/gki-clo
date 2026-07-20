@@ -28,6 +28,13 @@ extern bool susfs_is_current_ksu_domain(void);
 extern void setup_selinux(const char *domain, struct cred *cred);
 extern struct cred *ksu_cred;
 
+extern struct static_key_true susfs_set_uname_key_true;
+extern struct static_key_true susfs_avc_log_spoofing_key_true;
+extern struct static_key_true susfs_set_fake_cmdline_or_bootconfig_key_true;
+extern struct static_key_false susfs_set_sdcard_android_data_decrypted_key_false;
+extern bool susfs_hide_sus_mnts_for_non_su_procs;
+
+
 #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
 DEFINE_STATIC_KEY_TRUE(susfs_is_log_enabled);
 #define SUSFS_LOGI(fmt, ...) if (static_branch_likely(&susfs_is_log_enabled)) pr_info("susfs:[%u][%d][%s] " fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
@@ -251,8 +258,10 @@ void susfs_set_hide_sus_mnts_for_non_su_procs(void __user **user_info) {
 	}
 	
 	if (info.enabled) {
+		susfs_hide_sus_mnts_for_non_su_procs = true;
 		static_branch_enable(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled);
 	} else {
+		susfs_hide_sus_mnts_for_non_su_procs = false;
 		static_branch_disable(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled);
 	}
 
@@ -644,6 +653,8 @@ void susfs_set_uname(void __user **user_info) {
 
 	if (!static_key_enabled(&susfs_is_uname_spoof_buffer_set))
 		static_branch_enable(&susfs_is_uname_spoof_buffer_set);
+	if (!static_key_enabled(&susfs_set_uname_key_true))
+		static_branch_enable(&susfs_set_uname_key_true);
 
 	SUSFS_LOGI("set spoofed release: '%s', version: '%s'\n",
 				my_uname.release, my_uname.version);
@@ -738,6 +749,8 @@ void susfs_set_cmdline_or_bootconfig(void __user **user_info) {
 
 	if (!static_key_enabled(&susfs_is_fake_cmdline_or_bootconfig_buffer_set))
 		static_branch_enable(&susfs_is_fake_cmdline_or_bootconfig_buffer_set);
+	if (!static_key_enabled(&susfs_set_fake_cmdline_or_bootconfig_key_true))
+		static_branch_enable(&susfs_set_fake_cmdline_or_bootconfig_key_true);
 	SUSFS_LOGI("fake_cmdline_or_bootconfig is set\n");
 
 	info->err = 0;
@@ -1146,9 +1159,11 @@ void susfs_set_avc_log_spoofing(void __user **user_info) {
 
 	if (info.enabled) {
 		static_branch_enable(&susfs_is_avc_log_spoofing_enabled);
+		static_branch_enable(&susfs_avc_log_spoofing_key_true);
 		SUSFS_LOGI("enabling susfs_avc_log_spoofing\n");
 	} else {
 		static_branch_disable(&susfs_is_avc_log_spoofing_enabled);
+		static_branch_disable(&susfs_avc_log_spoofing_key_true);
 		SUSFS_LOGI("disabling susfs_avc_log_spoofing\n");
 	}
 
@@ -1314,6 +1329,7 @@ static void susfs_sdcard_cleanup_fn(struct work_struct *work)
 
 	if (static_key_enabled(&susfs_is_sdcard_android_data_not_decrypted))
 		static_branch_disable(&susfs_is_sdcard_android_data_not_decrypted);
+	static_branch_enable(&susfs_set_sdcard_android_data_decrypted_key_false);
 	SUSFS_LOGI("/sdcard is decrypted\n");
 	SUSFS_LOGI("cleaning up fsnotify sdcard watch\n");
 
@@ -1450,6 +1466,7 @@ void susfs_start_sdcard_monitor_fn(void) {
 		SUSFS_LOGI("/sdcard is forcibly set decrypted\n");
 		if (static_key_enabled(&susfs_is_sdcard_android_data_not_decrypted))
 			static_branch_disable(&susfs_is_sdcard_android_data_not_decrypted);
+		static_branch_enable(&susfs_set_sdcard_android_data_decrypted_key_false);
 	}
 }
 
@@ -1465,7 +1482,10 @@ static void susfs_run_extra_works(struct work_struct *work) {
 }
 
 /* susfs_init */
-void susfs_init(void) {\
+void susfs_init(void) {
+	static_branch_disable(&susfs_set_uname_key_true);
+	static_branch_disable(&susfs_avc_log_spoofing_key_true);
+	static_branch_disable(&susfs_set_fake_cmdline_or_bootconfig_key_true);
 	SUSFS_LOGI("Initializing susfs_extra_works\n");
 	INIT_WORK(&susfs_extra_works, susfs_run_extra_works);
 	SUSFS_LOGI("susfs is initialized! version: " SUSFS_VERSION " \n");

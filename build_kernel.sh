@@ -22,24 +22,77 @@ export SUBARCH=arm64
 # Allow environment variables to override interactive prompts.
 # Set ENABLE_SUSFS=y or ENABLE_DROIDSPACES=y before calling this script
 # to skip the interactive prompts (useful for scripted/CI invocations).
+if [[ -z "${ROOT_MANAGER}" ]]; then
+    echo "Select Root Manager:"
+    echo "1) KernelSU-Next (KSUN)"
+    echo "2) ReSukiSU"
+    echo "3) None"
+    read -p "Enter choice (1-3) [default: 1]: " root_choice
+    case $root_choice in
+        2) ROOT_MANAGER="RESUKISU" ;;
+        3) ROOT_MANAGER="NONE" ;;
+        *) ROOT_MANAGER="KSUN" ;;
+    esac
+fi
 if [[ -z "${ENABLE_SUSFS}" ]]; then
-    read -p "Enable SUSFS support? (y/n): " ENABLE_SUSFS
+    read -p "Enable SUSFS support? (y/n) [default: y]: " ENABLE_SUSFS
+    ENABLE_SUSFS=${ENABLE_SUSFS:-y}
 fi
 if [[ -z "${ENABLE_DROIDSPACES}" ]]; then
-    read -p "Enable Droidspaces support? (y/n): " ENABLE_DROIDSPACES
+    read -p "Enable Droidspaces support? (y/n) [default: y]: " ENABLE_DROIDSPACES
+    ENABLE_DROIDSPACES=${ENABLE_DROIDSPACES:-y}
 fi
-echo "Building with: SUSFS=${ENABLE_SUSFS}, Droidspaces=${ENABLE_DROIDSPACES}"
+echo "Building with: ROOT_MANAGER=${ROOT_MANAGER}, SUSFS=${ENABLE_SUSFS}, Droidspaces=${ENABLE_DROIDSPACES}"
+
+# Setup Root Manager dynamically
+echo "Setting up root manager: ${ROOT_MANAGER}..."
+rm -rf KernelSU KernelSU-Next common/drivers/kernelsu drivers/kernelsu
+
+if [[ "$ROOT_MANAGER" == "KSUN" ]]; then
+    curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+    cd KernelSU-Next
+    git reset --hard HEAD
+    patch -p1 < ../patches/susfs-ksun-hooks.patch
+    cd ..
+elif [[ "$ROOT_MANAGER" == "RESUKISU" ]]; then
+    curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+fi
 
 # Generate the base configuration
 make O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" $KERNEL_DEFCONFIG || exit 1
 
+# Toggle Root Manager
+if [[ "$ROOT_MANAGER" != "NONE" ]]; then
+    ./scripts/config --file "$OUT_DIR/.config" -e CONFIG_KSU
+else
+    ./scripts/config --file "$OUT_DIR/.config" -d CONFIG_KSU
+fi
+
 # Toggle SUSFS features
 if [[ "$ENABLE_SUSFS" == "y" ]]; then
     echo "Enabling SUSFS..."
-    ./scripts/config --file "$OUT_DIR/.config" -e CONFIG_KSU -e CONFIG_KSU_SUSFS -e CONFIG_KSU_SUSFS_SUS_PATH
+    ./scripts/config --file "$OUT_DIR/.config" \
+        -e CONFIG_KSU_SUSFS \
+        -e CONFIG_KSU_SUSFS_SUS_PATH \
+        -e CONFIG_KSU_SUSFS_SUS_MOUNT \
+        -e CONFIG_KSU_SUSFS_SUS_KSTAT \
+        -e CONFIG_KSU_SUSFS_SPOOF_UNAME \
+        -e CONFIG_KSU_SUSFS_ENABLE_LOG \
+        -e CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+        -e CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+        -e CONFIG_KSU_SUSFS_SUS_MAP
 else
     echo "Disabling SUSFS..."
-    ./scripts/config --file "$OUT_DIR/.config" -d CONFIG_KSU -d CONFIG_KSU_SUSFS -d CONFIG_KSU_SUSFS_SUS_PATH
+    ./scripts/config --file "$OUT_DIR/.config" \
+        -d CONFIG_KSU_SUSFS \
+        -d CONFIG_KSU_SUSFS_SUS_PATH \
+        -d CONFIG_KSU_SUSFS_SUS_MOUNT \
+        -d CONFIG_KSU_SUSFS_SUS_KSTAT \
+        -d CONFIG_KSU_SUSFS_SPOOF_UNAME \
+        -d CONFIG_KSU_SUSFS_ENABLE_LOG \
+        -d CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+        -d CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+        -d CONFIG_KSU_SUSFS_SUS_MAP
 fi
 
 # Toggle Droidspaces features
@@ -94,7 +147,12 @@ fi
 
 # Create zip file in kernel root directory
 echo "Creating zip package..."
-ZIP_NAME="Capybara-CLO-$TIME.zip"
+SUFFIX=""
+[[ "$ROOT_MANAGER" != "NONE" ]] && SUFFIX="${SUFFIX}-${ROOT_MANAGER}"
+[[ "$ENABLE_SUSFS" == "y" ]] && SUFFIX="${SUFFIX}-SUSFS"
+[[ "$ENABLE_DROIDSPACES" == "y" ]] && SUFFIX="${SUFFIX}-Droidspaces"
+[[ -z "${SUFFIX}" ]] && SUFFIX="-Vanilla"
+ZIP_NAME="Capybara-CLO-$TIME$SUFFIX.zip"
 cd "$TEMP_ANY_KERNEL_DIR"
 zip -r9 "$KERNEL_DIR/$ZIP_NAME" ./*
 cd ..
