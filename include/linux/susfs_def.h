@@ -3,6 +3,10 @@
 
 #include <linux/bits.h>
 #include <linux/string.h>
+#include <linux/sched.h>
+#include <linux/thread_info.h>
+#include <linux/cred.h>
+#include <asm/current.h>
 
 /********/
 /* ENUM */
