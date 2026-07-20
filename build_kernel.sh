@@ -12,62 +12,58 @@ ZIMAGE_DIR="$OUT_DIR/arch/arm64/boot"
 DTB_DTBO_DIR="$ZIMAGE_DIR/dts/vendor/qcom"
 BUILD_START=$(date +"%s")
 
-# Function to check for existing Clang
-check_clang() {
-    if [ -d "$CLANG_DIR" ] && [ -f "$CLANG_DIR/bin/clang" ]; then
-        export PATH="$CLANG_DIR/bin:$PATH"
-        export KBUILD_COMPILER_STRING="$($CLANG_DIR/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
-        echo "Found existing Clang: $KBUILD_COMPILER_STRING"
-        return 0
-    fi
-    return 1
-}
-
-# Install Clang if needed
-if ! check_clang; then
-    echo "No valid Clang found. Installing..."
-    echo "1. AOSP r510928"
-    echo "2. Zyc Clang 23.0"
-    read -p "Choose [1-2]: " clang_choice
-
-    case "$clang_choice" in
-        1)
-            CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-release/clang-r510928.tar.gz"
-            ARCHIVE_NAME="clang.tar.gz"
-            mkdir -p "$CLANG_DIR"
-            wget -P "$MAIN" "$CLANG_URL" -O "$MAIN/$ARCHIVE_NAME" || exit 1
-            tar -xf "$MAIN/$ARCHIVE_NAME" -C "$CLANG_DIR" || exit 1
-            rm -f "$MAIN/$ARCHIVE_NAME"
-            ;;
-        2)
-            CLANG_URL="https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130.tar.gz"
-            ARCHIVE_NAME="clang.tar.gz"
-            mkdir -p "$CLANG_DIR"
-            wget -P "$MAIN" "$CLANG_URL" -O "$MAIN/$ARCHIVE_NAME" || exit 1
-            tar -xf "$MAIN/$ARCHIVE_NAME" -C "$CLANG_DIR" || exit 1
-            rm -f "$MAIN/$ARCHIVE_NAME"
-            ;;
-
-
-        *)
-            echo "Invalid choice. Exiting..."
-            exit 1
-            ;;
-    esac
-
-    if ! check_clang; then
-        echo "Clang installation failed. Exiting..."
-        exit 1
-    fi
-fi
+# Use system clang
+export PATH="/usr/bin:$PATH"
 
 # Set up toolchain
 export ARCH=arm64
 export SUBARCH=arm64
 
-# Build kernel
+# Allow environment variables to override interactive prompts.
+# Set ENABLE_SUSFS=y or ENABLE_DROIDSPACES=y before calling this script
+# to skip the interactive prompts (useful for scripted/CI invocations).
+if [[ -z "${ENABLE_SUSFS}" ]]; then
+    read -p "Enable SUSFS support? (y/n): " ENABLE_SUSFS
+fi
+if [[ -z "${ENABLE_DROIDSPACES}" ]]; then
+    read -p "Enable Droidspaces support? (y/n): " ENABLE_DROIDSPACES
+fi
+echo "Building with: SUSFS=${ENABLE_SUSFS}, Droidspaces=${ENABLE_DROIDSPACES}"
+
+# Generate the base configuration
 make O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" $KERNEL_DEFCONFIG || exit 1
-make -j17 O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" || exit 1
+
+# Toggle SUSFS features
+if [[ "$ENABLE_SUSFS" == "y" ]]; then
+    echo "Enabling SUSFS..."
+    ./scripts/config --file "$OUT_DIR/.config" -e CONFIG_KSU -e CONFIG_KSU_SUSFS -e CONFIG_KSU_SUSFS_SUS_PATH
+else
+    echo "Disabling SUSFS..."
+    ./scripts/config --file "$OUT_DIR/.config" -d CONFIG_KSU -d CONFIG_KSU_SUSFS -d CONFIG_KSU_SUSFS_SUS_PATH
+fi
+
+# Toggle Droidspaces features
+if [[ "$ENABLE_DROIDSPACES" == "y" ]]; then
+    echo "Enabling Droidspaces..."
+    ./scripts/config --file "$OUT_DIR/.config" \
+        -e CONFIG_SYSVIPC -e CONFIG_POSIX_MQUEUE -e CONFIG_USER_NS \
+        -e CONFIG_PID_NS -e CONFIG_IPC_NS -e CONFIG_DEVTMPFS \
+        -e CONFIG_NETFILTER_XT_MATCH_ADDRTYPE -e CONFIG_NETFILTER_XT_TARGET_REJECT \
+        -e CONFIG_NETFILTER_XT_TARGET_LOG -e CONFIG_NETFILTER_XT_MATCH_RECENT \
+        -e CONFIG_IP_SET -e CONFIG_IP_SET_HASH_IP -e CONFIG_IP_SET_HASH_NET \
+        -e CONFIG_NETFILTER_XT_SET -e CONFIG_TMPFS_POSIX_ACL -e CONFIG_TMPFS_XATTR
+else
+    echo "Disabling Droidspaces..."
+    ./scripts/config --file "$OUT_DIR/.config" \
+        -d CONFIG_SYSVIPC -d CONFIG_POSIX_MQUEUE -d CONFIG_USER_NS \
+        -d CONFIG_PID_NS -d CONFIG_IPC_NS
+fi
+
+# Re-evaluate the new .config dependencies
+make O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" olddefconfig
+
+# Build kernel
+make -j6 O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" || exit 1
 
 # Clean up old kernel zip files
 echo "Cleaning up old kernel zip files..."
