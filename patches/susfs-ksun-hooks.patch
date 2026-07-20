@@ -63,15 +63,6 @@ index 553cb6ae..288cd5f5 100644
  #include <linux/types.h>
  #include <linux/version.h>
  #include <linux/sched/task_stack.h>
-@@ -186,8 +186,8 @@ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr,
- 		goto do_orig_execve;
- 	}
- 
--	if (likely(memcmp(path, su_path, sizeof(su_path))))
-+	if (likely(memcmp(path, su_path, sizeof(su_path))))
- 		goto do_orig_execve;
- 
- 	ksu_compat_sulog('x');
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
 index 3cccc780..839d4545 100644
 --- a/kernel/hook/setuid_hook.c
