@@ -251,7 +251,7 @@ fi
 [ -z "$WIFI_EXPLOIT" ] && WIFI_EXPLOIT="on"
 [ -z "$KGSL_EXPLOIT" ] && KGSL_EXPLOIT="on"
 [ -z "$DATA_EXPLOIT" ] && DATA_EXPLOIT="on"
-[ -z "$AUTOFDO" ] && AUTOFDO="off"
+[ -z "$AUTOFDO" ] && AUTOFDO="on"
 
 
 # Guard: block known-broken/unsupported variant+root combos
