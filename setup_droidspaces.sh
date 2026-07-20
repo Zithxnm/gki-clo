@@ -17,13 +17,7 @@ echo "[*] Downloading $PATCH_NAME..."
 curl -sLO "$PATCH_URL"
 
 echo "[*] Applying $PATCH_NAME..."
-if grep -q "struct sysv_sem sysvsem" include/linux/sched.h; then
-    echo "[+] Droidspaces kABI (SYSVIPC) seems already present. Skipping patch."
-    rm -f "$PATCH_NAME"
-elif patch -p1 --forward --dry-run -R < "$PATCH_NAME" >/dev/null 2>&1; then
-    echo "[+] Patch already applied, skipping."
-    rm -f "$PATCH_NAME"
-elif patch -p1 --forward < "$PATCH_NAME"; then
+if patch -p1 < "$PATCH_NAME"; then
     echo "[+] Successfully applied $PATCH_NAME"
     rm -f "$PATCH_NAME"
 else
