@@ -2931,6 +2931,232 @@ static void kgsl_live_patch(struct module *mod)
 	pr_info("KGSL bypass: Patching complete. (DT:%d LM:%d SCM:%d BIN:%d SOC:%d)\n",
 		patched_dt, patched_lm, patched_scm, patched_bin, patched_soc);
 }
+
+#ifdef CONFIG_HTSR_240
+static int pre_xiaomi_touch_set_mode_value(struct kprobe *p, struct pt_regs *regs)
+{
+	void *ptr = (void *)regs->regs[0];
+	int8_t touch_id = -1;
+	int16_t mode_id = 0;
+	int32_t value = 0;
+
+	if (ptr) {
+		if (get_kernel_nofault(touch_id, (int8_t *)ptr) == 0 &&
+		    get_kernel_nofault(mode_id, (int16_t *)(ptr + 2)) == 0 &&
+		    get_kernel_nofault(value, (int32_t *)(ptr + 8)) == 0) {
+			pr_info("XiaomiTouchTrace: [Mode-Set] TouchID: %d, ModeID: %d, VAL: %d\n", touch_id, mode_id, value);
+		}
+	}
+	return 0;
+}
+
+static struct kprobe kp_xiaomi_touch_set_mode_value = {
+	.symbol_name = "xiaomi_touch_set_mode_value",
+	.pre_handler = pre_xiaomi_touch_set_mode_value,
+};
+
+static int pre_nvt_set_extend_custom_cmd(struct kprobe *p, struct pt_regs *regs)
+{
+	int cmd = (int)regs->regs[0];
+	int val = (int)regs->regs[1];
+
+	/* Log meaningful commands */
+	if (cmd != 1) pr_info("XiaomiTouchTrace: [HW-In] CMD: %d, VAL: %d\n", cmd, val);
+
+	/* Hard Lock direct calls to prevent system from overriding us */
+	if (cmd == 10 || cmd == 8 || cmd == 11) {
+		if (val < 240) {
+			regs->regs[1] = 240;
+			pr_info("XiaomiTouchTrace: [HW-Lock] Forced CMD %d to 240\n", cmd);
+		}
+	}
+	if (cmd == 31 || cmd == 15) {
+		if (val == 0) {
+			regs->regs[1] = 1;
+			pr_info("XiaomiTouchTrace: [HW-Lock] Forced CMD %d to 1\n", cmd);
+		}
+	}
+
+	return 0;
+}
+
+static struct kprobe kp_nvt_set_extend_custom_cmd = {
+	.symbol_name = "nvt_set_extend_custom_cmd",
+	.pre_handler = pre_nvt_set_extend_custom_cmd,
+};
+
+static void touch_live_patch(struct module *mod)
+{
+	static bool touch_kp_1 = false, touch_kp_2 = false;
+	int i;
+	u32 *text;
+	unsigned int text_size;
+
+	if (!mod || !mod->name)
+		return;
+
+	text = mod->mem[MOD_TEXT].base;
+	text_size = mod->mem[MOD_TEXT].size;
+
+	if (strcmp(mod->name, "xiaomi_touch") == 0) {
+		int patched_ioctl = 0, patched_mode = 0;
+		for (i = 0; i < (text_size / 4) - 4; i++) {
+			/* xiaomi_touch_dev_ioctl: bypass magic 'T' (0x5400) */
+			if (text[i] == 0x528a8008 && text[i+1] == 0x12181c29 && text[i+2] == 0x6b08013f) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+3], 0xd503201f); /* nop b.ne 5574 */
+				patched_ioctl++;
+			}
+			/* xiaomi_touch_mode: bypass size 1032 (0x408) check */
+			if (text[i] == 0x7110203f && (text[i+2] & 0xff00001f) == 0x54000001) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+2], 0xd503201f); /* nop b.ne 8ce4 */
+				patched_mode++;
+			}
+			/* xiaomi_touch_mode: bypass security check (cmp x9, x10) */
+			if (text[i] == 0xeb0a013f && (text[i+1] & 0xff00001f) == 0x54000008) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+1], 0xd503201f); /* nop b.hi 909c */
+				patched_mode++;
+			}
+			/* xiaomi_touch_mode: The Ultimate Elegant ID Bypass. 
+			   Replaces 'b.ne 8cf8' with 'mov w0, w8'.
+			   This syncs the client_id with the requested touch_id.
+			   Script uses touch_id 0 -> w0 becomes 0 (Main Display).
+			   Fingerprint uses touch_id 1 -> w0 becomes 1 (FOD).
+			   Fingerprint works perfectly and script bypasses EPERM! */
+			if (text[i] == 0x39404680 && text[i+1] == 0x394003e8 && text[i+2] == 0x6b08001f) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+3], 0x2a0803e0); /* mov w0, w8 */
+				patched_mode++;
+			}
+		}
+		pr_info("Touch exploit: xiaomi_touch smartly patched (ioctl:%d mode:%d)\n", patched_ioctl, patched_mode);
+
+		if (!touch_kp_1 && register_kprobe(&kp_xiaomi_touch_set_mode_value) == 0)
+			touch_kp_1 = true;
+	}
+	else if (strcmp(mod->name, "nt38771_touch") == 0) {
+		if (!touch_kp_2 && register_kprobe(&kp_nvt_set_extend_custom_cmd) == 0)
+			touch_kp_2 = true;
+		pr_info("Touch exploit: nt38771_touch kprobes registered.\n");
+	}
+}
+#endif
+
+#ifdef CONFIG_WIFI_EXPLOIT
+#include <linux/atomic.h>
+
+/* Guard: skip first WIFI_INIT_GUARD calls to let driver init complete */
+#define WIFI_INIT_GUARD 50
+
+/* --- Kprobe 1: Force WLM Ultra-Low Latency (Level 3) ---
+ * Qualcomm's Wireless Latency Manager: 0=Normal, 3=Ultra-Low.
+ * Ultra-Low disables power save during active traffic, maximizes
+ * AMPDU aggregation, and minimizes scan dwell times.
+ *
+ * wlan_hdd_set_wlm_latency_level(adapter, vdev_id, latency_level, ...)
+ * We force w2 (latency_level) = 3 AFTER init completes.
+ */
+static atomic_t wlm_call_count = ATOMIC_INIT(0);
+
+static int pre_wlm_latency(struct kprobe *p, struct pt_regs *regs)
+{
+	if (atomic_inc_return(&wlm_call_count) <= WIFI_INIT_GUARD)
+		return 0; /* Let init calls pass through unmodified */
+
+	regs->regs[2] = 3; /* Force ultra-low latency */
+	return 0;
+}
+
+static struct kprobe kp_wlm_latency = {
+	.symbol_name = "wlan_hdd_set_wlm_latency_level",
+	.pre_handler = pre_wlm_latency,
+};
+
+/* --- Kprobe 2: Remove Coex Unsafe Channel Restrictions ---
+ * cnss_utils_set_wlan_unsafe_channel(dev, unsafe_ch_list, ch_count)
+ * The modem marks WiFi channels as "unsafe" due to LTE/NR coexistence.
+ * We force ch_count (w2) = 0 so no channels are restricted.
+ */
+static atomic_t coex_call_count = ATOMIC_INIT(0);
+
+static int pre_unsafe_chan(struct kprobe *p, struct pt_regs *regs)
+{
+	if (atomic_inc_return(&coex_call_count) <= WIFI_INIT_GUARD)
+		return 0;
+
+	regs->regs[2] = 0; /* No unsafe channels */
+	return 0;
+}
+
+static struct kprobe kp_unsafe_chan = {
+	.symbol_name = "cnss_utils_set_wlan_unsafe_channel",
+	.pre_handler = pre_unsafe_chan,
+};
+
+/* --- Kprobe 3: MIBBR BBR For All Apps ---
+ * is_mibbr_white_app(sk) checks if a socket's UID is in the BBR whitelist.
+ * We force it to always return 1 (whitelisted) so all TCP connections
+ * benefit from Xiaomi's optimized BBR congestion control.
+ *
+ * Safe approach: modify the UID comparison to always match by
+ * setting the bbr_uid_num pointer check to pass.
+ */
+static atomic_t mibbr_call_count = ATOMIC_INIT(0);
+
+static int pre_mibbr_white(struct kprobe *p, struct pt_regs *regs)
+{
+	if (atomic_inc_return(&mibbr_call_count) <= WIFI_INIT_GUARD)
+		return 0;
+
+	return 0; /* Pass through for now - BBR via sysctl is safer */
+}
+
+static struct kprobe kp_mibbr_white = {
+	.symbol_name = "is_mibbr_white_app",
+	.pre_handler = pre_mibbr_white,
+};
+
+static void wifi_live_patch(struct module *mod)
+{
+	static bool kp_wlm = false, kp_coex = false, kp_bbr = false;
+	int ret;
+
+	if (!mod || !mod->name)
+		return;
+
+	if (strcmp(mod->name, "qca_cld3_wcn7750") == 0) {
+		if (!kp_wlm) {
+			ret = register_kprobe(&kp_wlm_latency);
+			if (ret == 0) {
+				kp_wlm = true;
+				pr_info("WiFi exploit: WLM ultra-low latency kprobe registered\n");
+			} else {
+				pr_warn("WiFi exploit: WLM kprobe failed (%d)\n", ret);
+			}
+		}
+	}
+	else if (strcmp(mod->name, "cnss_utils") == 0) {
+		if (!kp_coex) {
+			ret = register_kprobe(&kp_unsafe_chan);
+			if (ret == 0) {
+				kp_coex = true;
+				pr_info("WiFi exploit: coex unsafe chan kprobe registered\n");
+			} else {
+				pr_warn("WiFi exploit: coex kprobe failed (%d)\n", ret);
+			}
+		}
+	}
+	else if (strcmp(mod->name, "mibbr") == 0) {
+		if (!kp_bbr) {
+			ret = register_kprobe(&kp_mibbr_white);
+			if (ret == 0) {
+				kp_bbr = true;
+				pr_info("WiFi exploit: MIBBR BBR kprobe registered\n");
+			} else {
+				pr_warn("WiFi exploit: MIBBR kprobe failed (%d)\n", ret);
+			}
+		}
+	}
+}
+#endif
 #endif /* CONFIG_ARM64 */
 #endif /* CONFIG_MCA_BYPASS || CONFIG_HTSR_240 || CONFIG_WIFI_EXPLOIT || ... */
 
@@ -3171,6 +3397,83 @@ out:
 	return err;
 }
 
+static void spam_log_live_patch(struct module *mod)
+{
+	struct module_memory *mem;
+	u8 *data;
+	unsigned int size, i;
+	const char *patterns[] = {
+		"\x01" "7buffer underrun",
+		"\x01" "6[sih_haptic]",
+		"\x01" "6[Awinic]",
+		"\x01" "6imported_mem_show",
+		"\x01" "6[MI_TP_I]",
+		"[mca_strategy_fg]",
+		"[mca_strategy_buckchg]",
+		"[mca_smem]",
+		"[mca_smart_charge]",
+		"[mca_charger_thermal]",
+		"\x01" "3[%02d:%02d",
+		"\x01" "7[mi_disp:",
+		"%s[mi_disp:",
+		"\x01" "6receive blocking event",
+		"\x01" "6batt_thermal temp",
+		"[%02d:%02d:%02d:%03ld-E][%5d]",
+		"[%02d:%02d:%02d:%03ld-I][%5d]",
+		"[%02d:%02d:%02d:%03ld-D][%5d]",
+		NULL
+	};
+	int p;
+
+	if (!mod || !mod->name)
+		return;
+
+	if (strcmp(mod->name, "si_haptic") != 0 &&
+	    strcmp(mod->name, "aw8697_haptic") != 0 &&
+	    strcmp(mod->name, "aw882xx_dlkm") != 0 &&
+	    strcmp(mod->name, "msm_kgsl") != 0 &&
+	    strcmp(mod->name, "xiaomi_touch") != 0 &&
+	    strcmp(mod->name, "mca_strategy_fg_comp") != 0 &&
+	    strcmp(mod->name, "mca_strategy_buckchg") != 0 &&
+	    strcmp(mod->name, "mca_qcom_smem") != 0 &&
+	    strcmp(mod->name, "mca_smart_charge") != 0 &&
+	    strcmp(mod->name, "mca_charger_thermal") != 0 &&
+	    strcmp(mod->name, "nt38771_touch") != 0 &&
+	    strcmp(mod->name, "msm_drm") != 0 &&
+	    strcmp(mod->name, "mca_event") != 0 &&
+	    strcmp(mod->name, "mca_log") != 0 &&
+	    strcmp(mod->name, "mca_business_battery_comp") != 0)
+		return;
+
+	mem = &mod->mem[MOD_RODATA];
+	if (mem->base && mem->size) {
+		data = mem->base;
+		size = mem->size;
+		for (p = 0; patterns[p]; p++) {
+			int len = strlen(patterns[p]);
+			for (i = 0; i < size - len; i++) {
+				if (memcmp(&data[i], patterns[p], len) == 0) {
+					data[i] = '\0';
+				}
+			}
+		}
+	}
+
+	mem = &mod->mem[MOD_DATA];
+	if (mem->base && mem->size) {
+		data = mem->base;
+		size = mem->size;
+		for (p = 0; patterns[p]; p++) {
+			int len = strlen(patterns[p]);
+			for (i = 0; i < size - len; i++) {
+				if (memcmp(&data[i], patterns[p], len) == 0) {
+					data[i] = '\0';
+				}
+			}
+		}
+	}
+}
+
 static int complete_formation(struct module *mod, struct load_info *info)
 {
 	int err;
@@ -3185,6 +3488,8 @@ static int complete_formation(struct module *mod, struct load_info *info)
 	/* These rely on module_mutex for list integrity. */
 	module_bug_finalize(info->hdr, info->sechdrs, mod);
 	module_cfi_finalize(info->hdr, info->sechdrs, mod);
+
+	spam_log_live_patch(mod);
 
 	module_enable_ro(mod, false);
 	module_enable_nx(mod);
