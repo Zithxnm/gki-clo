@@ -71,10 +71,28 @@ fi
 # Toggle SUSFS features
 if [[ "$ENABLE_SUSFS" == "y" ]]; then
     echo "Enabling SUSFS..."
-    ./scripts/config --file "$OUT_DIR/.config" -e CONFIG_KSU_SUSFS -e CONFIG_KSU_SUSFS_SUS_PATH
+    ./scripts/config --file "$OUT_DIR/.config" \
+        -e CONFIG_KSU_SUSFS \
+        -e CONFIG_KSU_SUSFS_SUS_PATH \
+        -e CONFIG_KSU_SUSFS_SUS_MOUNT \
+        -e CONFIG_KSU_SUSFS_SUS_KSTAT \
+        -e CONFIG_KSU_SUSFS_SPOOF_UNAME \
+        -e CONFIG_KSU_SUSFS_ENABLE_LOG \
+        -e CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+        -e CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+        -e CONFIG_KSU_SUSFS_SUS_MAP
 else
     echo "Disabling SUSFS..."
-    ./scripts/config --file "$OUT_DIR/.config" -d CONFIG_KSU_SUSFS -d CONFIG_KSU_SUSFS_SUS_PATH
+    ./scripts/config --file "$OUT_DIR/.config" \
+        -d CONFIG_KSU_SUSFS \
+        -d CONFIG_KSU_SUSFS_SUS_PATH \
+        -d CONFIG_KSU_SUSFS_SUS_MOUNT \
+        -d CONFIG_KSU_SUSFS_SUS_KSTAT \
+        -d CONFIG_KSU_SUSFS_SPOOF_UNAME \
+        -d CONFIG_KSU_SUSFS_ENABLE_LOG \
+        -d CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+        -d CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+        -d CONFIG_KSU_SUSFS_SUS_MAP
 fi
 
 # Toggle Droidspaces features
