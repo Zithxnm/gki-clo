@@ -57,7 +57,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.build_ref || github.ref }}
-          fetch-depth: 0
 
       - name: Setup Root Manager
         run: |
