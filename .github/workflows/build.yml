@@ -48,8 +48,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.build_ref || github.ref }}
-          fetch-depth: 1
+          fetch-depth: 0
           submodules: recursive
+
+      # KernelSU-Next Kbuild computes the kernel version as 30000 + git-rev-count.
+      # A shallow submodule clone gives rev-count=1 → version 30001.
+      # Ensure the submodule has full history so the version is correct.
+      - name: Unshallow KernelSU-Next submodule
+        run: |
+          git -C KernelSU-Next fetch --unshallow 2>/dev/null || true
 
       # ─── System dependencies ─────────────────────────────────────────────────
       - name: Install build dependencies
