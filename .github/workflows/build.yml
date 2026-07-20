@@ -3,11 +3,11 @@ name: Build Capybara CLO Kernel
 on:
   push:
     branches:
-      - origin/6.6.77
+      - 6.6.77
       - main
   pull_request:
     branches:
-      - origin/6.6.77
+      - 6.6.77
       - main
   workflow_dispatch:
     inputs:
@@ -32,8 +32,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Clang version from build.config.constants
-  CLANG_VERSION: r510928
   KERNEL_DEFCONFIG: capybara_defconfig
   ARCH: arm64
   SUBARCH: arm64
@@ -63,26 +61,20 @@ jobs:
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
             libncurses-dev device-tree-compiler
 
-      # ─── Clang toolchain ─────────────────────────────────────────────────────
-      - name: Cache Clang toolchain
-        id: cache-clang
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/toolchains/clang
-          key: clang-${{ env.CLANG_VERSION }}
-
-      - name: Download Clang ${{ env.CLANG_VERSION }}
-        if: steps.cache-clang.outputs.cache-hit != 'true'
+      # ─── Clang 18 toolchain ──────────────────────────────────────────────────
+      - name: Install Clang 18
         run: |
-          mkdir -p "${{ github.workspace }}/toolchains/clang"
-          curl -fsSL \
-            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-${{ env.CLANG_VERSION }}.tar.gz" \
-            -o /tmp/clang.tar.gz
-          tar -C "${{ github.workspace }}/toolchains/clang" -xzf /tmp/clang.tar.gz
-          rm /tmp/clang.tar.gz
-
-      - name: Add Clang to PATH
-        run: echo "${{ github.workspace }}/toolchains/clang/bin" >> "$GITHUB_PATH"
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 18
+          sudo ln -sf /usr/bin/clang-18   /usr/bin/clang
+          sudo ln -sf /usr/bin/ld.lld-18  /usr/bin/ld.lld
+          sudo ln -sf /usr/bin/llvm-ar-18 /usr/bin/llvm-ar
+          sudo ln -sf /usr/bin/llvm-nm-18 /usr/bin/llvm-nm
+          sudo ln -sf /usr/bin/llvm-objcopy-18 /usr/bin/llvm-objcopy
+          sudo ln -sf /usr/bin/llvm-objdump-18 /usr/bin/llvm-objdump
+          sudo ln -sf /usr/bin/llvm-strip-18    /usr/bin/llvm-strip
+          clang --version
 
       # ─── Determine feature flags ──────────────────────────────────────────────
       - name: Resolve feature toggles
