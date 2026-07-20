@@ -57,10 +57,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ca-certificates cpio curl \
-            flex git kmod libelf-dev libssl-dev \
-            lz4 python3 rsync unzip zip zstd \
+            flex git gcc make kmod libelf-dev libssl-dev \
+            lz4 python3 python3-dev rsync unzip zip zstd \
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            libncurses-dev device-tree-compiler
+            libncurses-dev device-tree-compiler pahole
 
       # ─── Clang 18 toolchain ──────────────────────────────────────────────────
       - name: Install Clang 18
@@ -103,12 +103,14 @@ jobs:
         run: |
           make \
             O="${{ github.workspace }}/out" \
+            ARCH=${{ env.ARCH }} \
+            SUBARCH=${{ env.SUBARCH }} \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
+            HOSTCC=gcc \
             LLVM=1 \
             LLVM_IAS=1 \
             KCFLAGS="-w" \
-            ARCH=${{ env.ARCH }} \
-            SUBARCH=${{ env.SUBARCH }} \
             ${{ env.KERNEL_DEFCONFIG }}
 
       - name: Apply SUSFS config flags
@@ -166,12 +168,14 @@ jobs:
         run: |
           make \
             O="${{ github.workspace }}/out" \
+            ARCH=${{ env.ARCH }} \
+            SUBARCH=${{ env.SUBARCH }} \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
+            HOSTCC=gcc \
             LLVM=1 \
             LLVM_IAS=1 \
             KCFLAGS="-w" \
-            ARCH=${{ env.ARCH }} \
-            SUBARCH=${{ env.SUBARCH }} \
             olddefconfig
 
       # ─── Build ────────────────────────────────────────────────────────────────
@@ -180,12 +184,14 @@ jobs:
           make \
             -j$(nproc) \
             O="${{ github.workspace }}/out" \
+            ARCH=${{ env.ARCH }} \
+            SUBARCH=${{ env.SUBARCH }} \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
+            HOSTCC=gcc \
             LLVM=1 \
             LLVM_IAS=1 \
-            KCFLAGS="-w" \
-            ARCH=${{ env.ARCH }} \
-            SUBARCH=${{ env.SUBARCH }}
+            KCFLAGS="-w"
 
       # ─── Package with AnyKernel3 ─────────────────────────────────────────────
       - name: Package kernel with AnyKernel3
