@@ -19,9 +19,16 @@ export PATH="/usr/bin:$PATH"
 export ARCH=arm64
 export SUBARCH=arm64
 
-# Ask the user for their preferences
-read -p "Enable SUSFS support? (y/n): " ENABLE_SUSFS
-read -p "Enable Droidspaces support? (y/n): " ENABLE_DROIDSPACES
+# Allow environment variables to override interactive prompts.
+# Set ENABLE_SUSFS=y or ENABLE_DROIDSPACES=y before calling this script
+# to skip the interactive prompts (useful for scripted/CI invocations).
+if [[ -z "${ENABLE_SUSFS}" ]]; then
+    read -p "Enable SUSFS support? (y/n): " ENABLE_SUSFS
+fi
+if [[ -z "${ENABLE_DROIDSPACES}" ]]; then
+    read -p "Enable Droidspaces support? (y/n): " ENABLE_DROIDSPACES
+fi
+echo "Building with: SUSFS=${ENABLE_SUSFS}, Droidspaces=${ENABLE_DROIDSPACES}"
 
 # Generate the base configuration
 make O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" $KERNEL_DEFCONFIG || exit 1
