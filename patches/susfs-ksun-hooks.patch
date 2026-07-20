@@ -6,9 +6,6 @@ index cec135d1..ee0ff484 100644
  kernelsu-objs += feature/sulog.o
  kernelsu-objs += feature/sucompat.o
  
-+ifeq ($(CONFIG_KSU_SUSFS),y)
-+kernelsu-objs += feature/susfs.o
-+endif
  kernelsu-objs += hook/lsm_hook.o
  kernelsu-objs += hook/setuid_hook.o
  kernelsu-objs += hook/syscall_event_bridge.o
@@ -189,30 +186,67 @@ index 902631d9..da3d0801 100644
  
 +#ifdef CONFIG_KSU_SUSFS
 +    switch (cmd) {
-+    case SUSFS_CMD_SUS_SU:
-+        return ksu_handle_sus_su(argp);
-+    case SUSFS_CMD_SUS_KSTAT:
-+        return ksu_handle_sus_kstat(argp);
-+    case SUSFS_CMD_SUS_UMOUNT:
-+        return ksu_handle_sus_umount(argp);
-+    case SUSFS_CMD_SUS_PATH:
-+        return ksu_handle_sus_path(argp);
-+    case SUSFS_CMD_SUS_PIN:
-+        return ksu_handle_sus_pin(argp);
-+    case SUSFS_CMD_SUS_MOUNT:
-+        return ksu_handle_sus_mount(argp);
-+    case SUSFS_CMD_SUS_KSTAT_OVERRIDE:
-+        return ksu_handle_sus_kstat_override(argp);
-+    case SUSFS_CMD_SUS_ENABLE_LOG:
-+        return ksu_handle_sus_enable_log(argp);
-+    case SUSFS_CMD_SUS_SHOW_LOG:
-+        return ksu_handle_sus_show_log(argp);
-+    case SUSFS_CMD_SUS_DUMP_UMOUNT:
-+        return ksu_handle_sus_dump_umount(argp);
-+    case SUSFS_CMD_SUS_GET_SPOOF_KSTAT_FD:
-+        return ksu_handle_sus_get_spoof_kstat_fd(argp);
-+    case SUSFS_CMD_SUS_ROM_CMD:
-+        return ksu_handle_sus_rom_cmd(argp);
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++    case CMD_SUSFS_ADD_SUS_PATH:
++        susfs_add_sus_path(&argp);
++        return 0;
++    case CMD_SUSFS_ADD_SUS_PATH_LOOP:
++        susfs_add_sus_path_loop(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++    case CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS:
++        susfs_set_hide_sus_mnts_for_non_su_procs(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++    case CMD_SUSFS_ADD_SUS_KSTAT:
++        susfs_add_sus_kstat(&argp);
++        return 0;
++    case CMD_SUSFS_UPDATE_SUS_KSTAT:
++        susfs_update_sus_kstat(&argp);
++        return 0;
++    case CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY:
++        susfs_add_sus_kstat(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
++    case CMD_SUSFS_SET_UNAME:
++        susfs_set_uname(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
++    case CMD_SUSFS_ENABLE_LOG:
++        susfs_enable_log(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
++    case CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG:
++        susfs_set_cmdline_or_bootconfig(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++    case CMD_SUSFS_ADD_OPEN_REDIRECT:
++        susfs_add_open_redirect(&argp);
++        return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++    case CMD_SUSFS_ADD_SUS_MAP:
++        susfs_add_sus_map(&argp);
++        return 0;
++#endif
++    case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
++        susfs_set_avc_log_spoofing(&argp);
++        return 0;
++    case CMD_SUSFS_SHOW_ENABLED_FEATURES:
++        susfs_get_enabled_features(&argp);
++        return 0;
++    case CMD_SUSFS_SHOW_VARIANT:
++        susfs_show_variant(&argp);
++        return 0;
++    case CMD_SUSFS_SHOW_VERSION:
++        susfs_show_version(&argp);
++        return 0;
 +    default:
 +        break;
 +    }
