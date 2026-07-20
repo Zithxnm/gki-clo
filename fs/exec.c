@@ -1923,7 +1923,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 		return PTR_ERR(filename);
 
 #ifdef CONFIG_KSU_SUSFS
-	if (likely(susfs_is_current_proc_umounted()) || !ksu_su_compat_enabled)
+	if (!ksu_su_compat_enabled)
 		goto orig_flow;
 
 	if (static_branch_unlikely(&susfs_set_sdcard_android_data_decrypted_key_false))

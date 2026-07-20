@@ -34,7 +34,7 @@ index dd741202..32533897 100644
 +#include <linux/susfs_def.h>
 +#endif
  #include <linux/slab.h>
-
+ 
 @@ -83,6 +83,11 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
  		return 0;
  	}
@@ -63,49 +63,15 @@ index 553cb6ae..288cd5f5 100644
  #include <linux/types.h>
  #include <linux/version.h>
  #include <linux/sched/task_stack.h>
-@@ -103,6 +106,10 @@ long ksu_handle_faccessat_sucompat(int orig_nr, struct pt_regs *regs)
- 	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
- 
- 	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
-+#ifdef CONFIG_KSU_SUSFS
-+		if (susfs_is_current_proc_umounted())
-+			goto do_orig_facessat;
-+#endif
- 		old_cred = override_creds(ksu_cred);
- 		if (is_ksud_exists()) {
- 			ksu_compat_sulog('a');
-@@ -139,6 +146,10 @@ long ksu_handle_stat_sucompat(int orig_nr, struct pt_regs *regs)
- 	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
- 
- 	if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
-+#ifdef CONFIG_KSU_SUSFS
-+		if (susfs_is_current_proc_umounted())
-+			goto do_orig_stat;
-+#endif
- 		old_cred = override_creds(ksu_cred);
- 		if (is_ksud_exists()) {
- 			ksu_compat_sulog('s');
-@@ -186,8 +197,19 @@ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr,
+@@ -186,8 +186,8 @@ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr,
  		goto do_orig_execve;
  	}
  
 -	if (likely(memcmp(path, su_path, sizeof(su_path))))
-+	if (likely(memcmp(path, su_path, sizeof(su_path)))) {
-+#ifdef CONFIG_KSU_SUSFS
-+		if (likely(!strstr(path, "/app_process") && !strstr(path, "/adbd"))) {
-+			susfs_set_current_proc_umounted();
-+		}
-+#endif
-+		goto do_orig_execve;
-+	}
-+
-+#ifdef CONFIG_KSU_SUSFS
-+	if (susfs_is_current_proc_umounted())
++	if (likely(memcmp(path, su_path, sizeof(su_path))))
  		goto do_orig_execve;
-+#endif
  
  	ksu_compat_sulog('x');
- 	pr_info("sys_execve su found\n");
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
 index 3cccc780..839d4545 100644
 --- a/kernel/hook/setuid_hook.c
@@ -116,8 +82,8 @@ index 3cccc780..839d4545 100644
 +#include <linux/susfs_def.h>
 +#endif
  #include <linux/version.h>
-
-@@ -53,6 +53,13 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+ 
+@@ -53,6 +53,16 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
      // Handle kernel umount
      ksu_handle_umount(old_uid, new_uid);
  
@@ -125,7 +91,10 @@ index 3cccc780..839d4545 100644
 +    extern struct work_struct susfs_extra_works;
 +    if (!work_pending(&susfs_extra_works))
 +        schedule_work(&susfs_extra_works);
-+    susfs_set_current_proc_umounted();
++    // Only mark as umounted for apps that do NOT have root access.
++    // Root-granted apps must NOT get this flag or su execution will be blocked.
++    if (!ksu_is_allow_uid_for_current(new_uid))
++        susfs_set_current_proc_umounted();
 +#endif
 +
      return 0;

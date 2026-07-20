@@ -474,7 +474,7 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
 	const struct cred *old_cred = NULL;
 
 #ifdef CONFIG_KSU_SUSFS
-	if (likely(susfs_is_current_proc_umounted()) || !ksu_su_compat_enabled) {
+	if (!ksu_su_compat_enabled) {
 		goto orig_flow;
 	}
 

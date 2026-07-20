@@ -282,7 +282,7 @@ static int vfs_statx(int dfd, struct filename *filename, int flags,
 	int error;
 
 #ifdef CONFIG_KSU_SUSFS
-	if (likely(susfs_is_current_proc_umounted()) || !ksu_su_compat_enabled) {
+	if (!ksu_su_compat_enabled) {
 		goto orig_flow;
 	}
 
