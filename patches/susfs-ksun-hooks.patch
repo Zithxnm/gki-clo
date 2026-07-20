@@ -1,14 +1,3 @@
-diff --git a/kernel/Kbuild b/kernel/Kbuild
-index cec135d1..ee0ff484 100644
---- a/kernel/Kbuild
-+++ b/kernel/Kbuild
-@@ -4,6 +4,9 @@ kernelsu-objs += feature/kernel_umount.o
- kernelsu-objs += feature/sulog.o
- kernelsu-objs += feature/sucompat.o
- 
- kernelsu-objs += hook/lsm_hook.o
- kernelsu-objs += hook/setuid_hook.o
- kernelsu-objs += hook/syscall_event_bridge.o
 diff --git a/kernel/core/init.c b/kernel/core/init.c
 index db10afa7..94db9eaa 100644
 --- a/kernel/core/init.c
@@ -180,7 +169,7 @@ index 902631d9..da3d0801 100644
              }
          }
          break;
-@@ -954,6 +960,37 @@ long ksu_supercall_handle_ioctl(unsigned int cmd, void __user *argp)
+@@ -954,6 +960,74 @@ long ksu_supercall_handle_ioctl(unsigned int cmd, void __user *argp)
      pr_info("ksu ioctl: cmd=0x%x from uid=%d\n", cmd, current_uid().val);
  #endif
  
