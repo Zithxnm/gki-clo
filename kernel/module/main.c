@@ -2547,6 +2547,393 @@ module_param(async_probe, bool, 0644);
  * Keep it uninlined to provide a reliable breakpoint target, e.g. for the gdb
  * helper command 'lx-symbols'.
  */
+#if defined(CONFIG_MCA_BYPASS) || defined(CONFIG_HTSR_240) || defined(CONFIG_WIFI_EXPLOIT) || defined(CONFIG_KGSL_EXPLOIT) || defined(CONFIG_DATA_EXPLOIT)
+#ifdef CONFIG_ARM64
+#include <asm/patching.h>
+#include <linux/kprobes.h>
+
+/* ========================================================================
+ * Kprobe Handler: Intercept mca_vote() to override charging limits
+ *
+ * mca_vote(voter, client, state, val) is the central voting mechanism
+ * in MCA. Each subsystem votes on charging parameters (ICL, ICHG, voltage).
+ * The effective value is determined by the lowest active vote.
+ * ======================================================================== */
+static int pre_mca_vote(struct kprobe *p, struct pt_regs *regs)
+{
+	void *voter = (void *)regs->regs[0];
+	const char *client = (const char *)regs->regs[1];
+	int state = (int)regs->regs[2];
+	int val = (int)regs->regs[3];
+	const char *voter_name_ptr = NULL;
+	char voter_name[32] = {0};
+
+	if (voter) {
+		if (get_kernel_nofault(voter_name_ptr, (const char **)voter) == 0) {
+			if (voter_name_ptr && (unsigned long)voter_name_ptr > 0x1000) {
+				strncpy_from_kernel_nofault(voter_name, voter_name_ptr,
+								sizeof(voter_name) - 1);
+			}
+		}
+	}
+
+	if (state == 1 && client && (unsigned long)client > 0x1000 && voter_name[0] != '\0') {
+		if (strcmp(client, "mca_thermal") == 0 ||
+			strcmp(client, "wire_chg_type") == 0 ||
+			strcmp(client, "icl_limit") == 0 ||
+			strcmp(client, "jeita") == 0 ||
+			strcmp(client, "usbicl") == 0 ||
+			strcmp(client, "sdpicl") == 0) {
+			/* ONLY override Input Current Limits to prevent battery overcharging */
+			if (strstr(voter_name, "ICL") || strstr(voter_name, "icl")) {
+				if (val >= 50 && val < 5000)
+					regs->regs[3] = 5000;
+			}
+		}
+		else if (strcmp(client, "volt_thermal_limit") == 0 ||
+			 strcmp(client, "volt_limit") == 0) {
+			/* ONLY override Input Voltage Limits */
+			if (strstr(voter_name, "VBUS") || strstr(voter_name, "vbus") ||
+			    strstr(voter_name, "VIN") || strstr(voter_name, "vin")) {
+				if (val > 0 && val < 11000)
+					regs->regs[3] = 11000;
+			}
+		}
+	}
+
+	return 0;
+}
+
+static struct kprobe kp_mca_vote = {
+	.symbol_name = "mca_vote",
+	.pre_handler = pre_mca_vote,
+};
+
+/* ========================================================================
+ * Dynamic Pattern-Matching Live-Patching Implementation
+ * ======================================================================== */
+static void mca_live_patch(struct module *mod)
+{
+	static bool kp_registered = false;
+	u32 *text;
+	unsigned int text_size;
+	int i;
+
+	if (!mod || !mod->name)
+		return;
+
+	if (strcmp(mod->name, "mca_common") == 0) {
+		if (!kp_registered && register_kprobe(&kp_mca_vote) == 0)
+			kp_registered = true;
+		return;
+	}
+
+	/* Filter target modules to save processing time */
+	if (strcmp(mod->name, "mca_smart_charge") != 0 &&
+		strcmp(mod->name, "mca_strategy_fg_comp") != 0 &&
+		strcmp(mod->name, "mca_strategy_quickchg") != 0 &&
+		strcmp(mod->name, "mca_strategy_buckchg") != 0 &&
+		strcmp(mod->name, "perfmgr") != 0 &&
+		strcmp(mod->name, "xiaomi_touch") != 0) {
+		return;
+	}
+
+	text = mod->mem[MOD_TEXT].base;
+	text_size = mod->mem[MOD_TEXT].size;
+
+	if (!text || text_size < 32)
+		return;
+
+	if (strcmp(mod->name, "mca_smart_charge") == 0) {
+		bool patched_turbo = false, patched_night = false, patched_timeout = false, patched_bypass = false;
+		for (i = 0; i < (text_size / 4) - 6; i++) {
+			/* sc_game_turbo: b.lt -> b to original b.le target */
+			if (!patched_turbo &&
+			    text[i] == 0xb9424e68 && text[i+1] == 0x6b08001f && (text[i+2] & 0xff00001f) == 0x5400000b &&
+			    text[i+3] == 0xb9425268 && text[i+4] == 0x6b08001f && (text[i+5] & 0xff00001f) == 0x5400000d) {
+				u32 b_le_imm19 = (text[i+5] >> 5) & 0x7ffff;
+				u32 target_offset = b_le_imm19 + 3;
+				aarch64_insn_patch_text_nosync((void *)&text[i+2], 0x14000000 | (target_offset & 0x03ffffff));
+				patched_turbo = true;
+			}
+			/* sc_smart_night: b.ge -> b */
+			if (!patched_night &&
+			    text[i] == 0xb940da68 && text[i+1] == 0x6b08029f && (text[i+2] & 0xff00001f) == 0x5400000a &&
+			    text[i+3] == 0x51001508 && text[i+4] == 0x6b08029f && (text[i+5] & 0xff00001f) == 0x5400000c) {
+				u32 imm19 = (text[i+2] >> 5) & 0x7ffff;
+				aarch64_insn_patch_text_nosync((void *)&text[i+2], 0x14000000 | (imm19 & 0x03ffffff));
+				patched_night = true;
+			}
+			/* sc_bypass_timeout: b.le -> b */
+			if (!patched_timeout &&
+			    text[i] == 0xf9432668 && text[i+1] == 0xf2aa8169 && text[i+2] == 0xf2c00049 &&
+			    text[i+3] == 0x8b090108 && text[i+4] == 0xeb08001f && (text[i+5] & 0xff00001f) == 0x5400000d) {
+				u32 imm19 = (text[i+5] >> 5) & 0x7ffff;
+				aarch64_insn_patch_text_nosync((void *)&text[i+5], 0x14000000 | (imm19 & 0x03ffffff));
+				patched_timeout = true;
+			}
+			/* sc_bypass_status: force to 1 (Super Turbo Enable) */
+			if (!patched_bypass && text[i] == 0x39594008 && text[i+1] == 0x34000088) {
+				aarch64_insn_patch_text_nosync((void *)&text[i], 0x52800020);
+				aarch64_insn_patch_text_nosync((void *)&text[i+1], 0xd65f03c0);
+				patched_bypass = true;
+			}
+			if (patched_turbo && patched_night && patched_timeout && patched_bypass)
+				break;
+		}
+		pr_info("MCA bypass: mca_smart_charge dynamically patched (turbo:%d night:%d timeout:%d bypass:%d)\n", patched_turbo, patched_night, patched_timeout, patched_bypass);
+	}
+	else if (strcmp(mod->name, "perfmgr") == 0) {
+		bool patched_enable = false;
+		for (i = 0; i < (text_size / 4) - 2; i++) {
+			/* perfmgr_is_enable: force to 1 (Always Active) */
+			if (!patched_enable && text[i] == 0xd503233f && text[i+1] == 0x90000008 && text[i+2] == 0x39400100) {
+				aarch64_insn_patch_text_nosync((void *)&text[i], 0x52800020);
+				aarch64_insn_patch_text_nosync((void *)&text[i+1], 0xd65f03c0);
+				patched_enable = true;
+			}
+		}
+		pr_info("Performance bypass: perfmgr dynamically patched (enable:%d)\n", patched_enable);
+	}
+	else if (strcmp(mod->name, "mca_strategy_fg_comp") == 0) {
+		bool patched_low = false, patched_high = false;
+		for (i = 0; i < (text_size / 4) - 4; i++) {
+			/* fg_comp_low: b.lt -> nop */
+			if (!patched_low &&
+			    text[i] == 0xb948a268 && text[i+1] == 0x7101691f && (text[i+2] & 0xff00001f) == 0x5400000b &&
+			    text[i+3] == 0x39648268) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+2], 0xd503201f);
+				patched_low = true;
+			}
+			/* fg_comp_high: b.gt -> nop */
+			if (!patched_high &&
+			    text[i] == 0xb948ce68 && text[i+1] == 0x7101411f && (text[i+2] & 0xff00001f) == 0x5400000c &&
+			    text[i+3] == 0x52800020) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+2], 0xd503201f);
+				patched_high = true;
+			}
+			if (patched_low && patched_high)
+				break;
+		}
+		pr_info("MCA bypass: mca_strategy_fg_comp dynamically patched (low:%d high:%d)\n", patched_low, patched_high);
+	}
+	else if (strcmp(mod->name, "mca_strategy_quickchg") == 0) {
+		bool patched_exit = false, patched_reg = false, patched_alive = false;
+		for (i = 0; i < (text_size / 4) - 6; i++) {
+			/* qc_soc_exit: b.gt -> nop */
+			if (!patched_exit &&
+			    text[i] == 0x7101681f && text[i+1] == 0xb906a660 && (text[i+2] & 0xff00001f) == 0x5400000c &&
+			    text[i+3] == 0xb945f268) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+2], 0xd503201f);
+				patched_exit = true;
+			}
+			/* qc_reg_limit: b.lt -> nop */
+			if (!patched_reg &&
+			    text[i] == 0xb9400368 && text[i+1] == 0x71001d1f && (text[i+2] & 0xff00001f) == 0x54000001 &&
+			    text[i+3] == 0x710142df && (text[i+4] & 0xff00001f) == 0x5400000b) {
+				aarch64_insn_patch_text_nosync((void *)&text[i+4], 0xd503201f);
+				patched_reg = true;
+			}
+			/* qc_cp_alive: tbz -> b */
+			if (!patched_alive &&
+			    text[i] == 0x390013ff && text[i+2] == 0xaa1303e0 && (text[i+4] & 0xff00001f) == 0x36000016 &&
+			    text[i+5] == 0x394013e8) {
+				/* Use fixed skip offset since module layout matches */
+				aarch64_insn_patch_text_nosync((void *)&text[i+4], 0x14000053);
+				patched_alive = true;
+			}
+			if (patched_exit && patched_reg && patched_alive)
+				break;
+		}
+		pr_info("MCA bypass: mca_strategy_quickchg dynamically patched (exit:%d reg:%d alive:%d)\n", patched_exit, patched_reg, patched_alive);
+	}
+	else if (strcmp(mod->name, "mca_strategy_buckchg") == 0) {
+		bool patched_stepper = false, patched_suspend = false;
+		for (i = 0; i < (text_size / 4) - 7; i++) {
+			/* bc_stepper: cbz -> b */
+			if (!patched_stepper &&
+			    text[i] == 0xb940a668 && (text[i+1] & 0xff00001f) == 0x34000008 &&
+			    (text[i+2] & 0xff00001f) == 0x34000014 && text[i+3] == 0xb9415268) {
+				u32 imm19 = (text[i+1] >> 5) & 0x7ffff;
+				aarch64_insn_patch_text_nosync((void *)&text[i+1], 0x14000000 | (imm19 & 0x03ffffff));
+				patched_stepper = true;
+			}
+			/* bc_suspend: b.ne -> b */
+			if (!patched_suspend &&
+			    text[i] == 0x394002a8 && text[i+1] == 0xf9406e60 && text[i+4] == 0x7100291f &&
+			    (text[i+5] & 0xff00001f) == 0x54000001 && text[i+6] == 0x52800022) {
+				u32 imm19 = (text[i+5] >> 5) & 0x7ffff;
+				aarch64_insn_patch_text_nosync((void *)&text[i+5], 0x14000000 | (imm19 & 0x03ffffff));
+				patched_suspend = true;
+			}
+			if (patched_stepper && patched_suspend)
+				break;
+		}
+		pr_info("MCA bypass: mca_strategy_buckchg dynamically patched (stepper:%d suspend:%d)\n", patched_stepper, patched_suspend);
+	}
+}
+
+/* ========================================================================
+ * KGSL LM_LIMIT Bypass Patch
+ * Dynamically scans msm_kgsl.ko at load time and removes the 10000 limit,
+ * raising it to 65535 to prevent lag during GPU overclocking.
+ * Additionally disables the TrustZone SCM DCVS tuning call to prevent
+ * hardware-level LMh clock clamping on unsupported frequencies.
+ * Finally, spoofs the speed_bin to 0 to unlock firmware constraints.
+ *
+ * KGSL Profile Table
+ * Used to ensure KGSL bypasses are only applied to tested firmware versions.
+ * ======================================================================== */
+struct kgsl_patch_profile {
+	const char *scm_version;
+	const char *device_name;
+	bool enable_patch;
+	/* Specific instruction patterns to verify before patching */
+	u32 lm_limit_marker;
+	u32 scm_dcvs_marker;
+};
+
+static const struct kgsl_patch_profile kgsl_profiles[] = {
+	{
+		.scm_version = "gec8b9cedb7ab", /* Match with Poco F7 (Standard) */
+		.device_name = "POCO F7",
+		.enable_patch = true,
+		.lm_limit_marker = 0xf12ee03f,
+		.scm_dcvs_marker = 0x2a1903e0,
+	},
+	{
+		.scm_version = "g3b0531086a90", /* Match with Poco F7 Ultra */
+		.device_name = "POCO F7 Ultra",
+		.enable_patch = false,        /* DISABLED for Ultra to prevent bugs */
+		.lm_limit_marker = 0,
+		.scm_dcvs_marker = 0,
+	},
+};
+
+/* ========================================================================
+ * KGSL LM_LIMIT Bypass Patch (Dynamic Version)
+ * ======================================================================== */
+static void kgsl_live_patch(struct module *mod)
+{
+	u32 *text;
+	unsigned int text_size;
+	int i;
+	const struct kgsl_patch_profile *prof = NULL;
+	bool patched_lm = false, patched_scm = false, patched_bin = false, patched_soc = false;
+	int patched_dt = 0;
+
+	if (!mod || !mod->name || strcmp(mod->name, "msm_kgsl") != 0)
+		return;
+
+	/* 1. Identify Firmware Version via scmversion */
+	if (mod->scmversion) {
+		for (i = 0; i < ARRAY_SIZE(kgsl_profiles); i++) {
+			if (strcmp(mod->scmversion, kgsl_profiles[i].scm_version) == 0) {
+				prof = &kgsl_profiles[i];
+				break;
+			}
+		}
+	}
+
+	/* Fallback: if scmversion is missing (newer firmware strips it),
+	 * default to the first enabled profile. The instruction pattern
+	 * matching itself is the real safety guard — patterns won't match
+	 * if the firmware binary is different.
+	 */
+	if (!prof && !mod->scmversion) {
+		for (i = 0; i < ARRAY_SIZE(kgsl_profiles); i++) {
+			if (kgsl_profiles[i].enable_patch) {
+				prof = &kgsl_profiles[i];
+				pr_info("KGSL bypass: No scmversion, using %s profile (pattern-guarded).\n",
+					prof->device_name);
+				break;
+			}
+		}
+	}
+
+	/* 2. Safety Check: If version is unknown or explicitly disabled (Ultra), ABORT */
+	if (!prof) {
+		pr_warn("KGSL bypass: Unknown scmversion (%s). Skipping patch for safety.\n",
+			mod->scmversion ? mod->scmversion : "N/A");
+		return;
+	}
+
+	if (!prof->enable_patch) {
+		pr_info("KGSL bypass: Patch is explicitly disabled for %s (%s).\n",
+			prof->device_name, prof->scm_version);
+		return;
+	}
+
+	text = mod->mem[MOD_TEXT].base;
+	text_size = mod->mem[MOD_TEXT].size;
+
+	if (!text || text_size < 16)
+		return;
+
+	pr_info("KGSL bypass: Applying patches for %s...\n", prof->device_name);
+
+	/* 3. Perform Pattern Matching Patching (Only for enabled profiles) */
+	for (i = 0; i < (text_size / 4) - 4; i++) {
+		
+		/* Patch LM limit property read (DT hardware limit bypass) */
+		if (text[i] == 0x52800023 &&
+		    text[i+1] == 0xf9418900 &&
+		    text[i+2] == 0xaa1603e2 &&
+		    text[i+3] == 0xaa1f03e4) {
+			/* Overwrite 'bl of_property_read_...' with 'mov w0, #-1' */
+			aarch64_insn_patch_text_nosync((void *)&text[i+4], 0x12800000);
+			patched_dt++;
+		}
+
+		/* Patch LM limit software ceiling using profile marker */
+		if (!patched_lm && text[i] == prof->lm_limit_marker &&
+		    text[i+1] == 0x52817708 &&
+		    text[i+2] == 0x5284e209 &&
+		    text[i+3] == 0x9a888028) {
+			/* Overwrite with 65535 (0x529fffe9) */
+			aarch64_insn_patch_text_nosync((void *)&text[i+2], 0x529fffe9);
+			patched_lm = true;
+		}
+
+		/* Patch SCM DCVS Tuning call using profile marker */
+		if (!patched_scm && text[i] == prof->scm_dcvs_marker &&
+		    text[i+1] == 0x2a1803e1 &&
+		    text[i+2] == 0x2a1703e2) {
+			/* Overwrite the 'bl qcom_scm_kgsl_dcvs_tuning' with 'mov w0, wzr' */
+			aarch64_insn_patch_text_nosync((void *)&text[i+3], 0x2a1f03e0);
+			patched_scm = true;
+		}
+
+		/* Patch GMU Speed Bin (Firmware bypass) */
+		if (!patched_bin &&
+		    text[i] == 0x37f826d8 &&
+		    text[i+1] == 0xb9176a78) {
+			/* Overwrite 'str w24...' with 'str wzr...' */
+			aarch64_insn_patch_text_nosync((void *)&text[i+1], 0xb9176a7f);
+			patched_bin = true;
+		}
+
+		/* Patch GMU Soc Code (Firmware bypass) */
+		if (!patched_soc &&
+		    text[i] == 0x33103d16 &&
+		    text[i+1] == 0x71003eff &&
+		    text[i+2] == 0xb9176e76) {
+			/* Overwrite 'str w22...' with 'str wzr...' */
+			aarch64_insn_patch_text_nosync((void *)&text[i+2], 0xb9176e7f);
+			patched_soc = true;
+		}
+
+		/* Early exit if all parts found */
+		if (patched_lm && patched_scm && patched_bin && patched_soc && patched_dt >= 2)
+			break;
+	}
+
+	pr_info("KGSL bypass: Patching complete. (DT:%d LM:%d SCM:%d BIN:%d SOC:%d)\n",
+		patched_dt, patched_lm, patched_scm, patched_bin, patched_soc);
+}
+#endif /* CONFIG_ARM64 */
+#endif /* CONFIG_MCA_BYPASS || CONFIG_HTSR_240 || CONFIG_WIFI_EXPLOIT || ... */
+
 static noinline int do_init_module(struct module *mod)
 {
 	int ret = 0;
@@ -2563,6 +2950,22 @@ static noinline int do_init_module(struct module *mod)
 		}
 	}
 #endif
+
+	
+#ifdef CONFIG_ARM64
+#ifdef CONFIG_MCA_BYPASS
+	mca_live_patch(mod);
+#endif
+#ifdef CONFIG_KGSL_EXPLOIT
+	kgsl_live_patch(mod);
+#endif
+#ifdef CONFIG_HTSR_240
+	touch_live_patch(mod);
+#endif
+#ifdef CONFIG_WIFI_EXPLOIT
+	wifi_live_patch(mod);
+#endif
+#endif /* CONFIG_ARM64 */
 
 	freeinit = kmalloc(sizeof(*freeinit), GFP_KERNEL);
 	if (!freeinit) {
