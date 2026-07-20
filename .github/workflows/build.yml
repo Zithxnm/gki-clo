@@ -49,6 +49,7 @@ jobs:
         with:
           ref: ${{ inputs.build_ref || github.ref }}
           fetch-depth: 1
+          submodules: recursive
 
       # ─── System dependencies ─────────────────────────────────────────────────
       - name: Install build dependencies
