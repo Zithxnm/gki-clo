@@ -179,3 +179,8 @@ sphinx_*/
 /rust-project.json
 
 *.zip
+
+# Root managers and build-time paths
+/KernelSU-Next/
+/drivers/kernelsu
+/tmp/
