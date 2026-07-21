@@ -42,7 +42,7 @@ jobs:
     - name: Setup KernelSU
       if: ${{ github.event.inputs.include_kernelsu == 'true' }}
       run: |
-        curl -ls https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh | bash -
+        curl -ls https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh | bash -s master
         echo "CONFIG_KSU=y" >> arch/arm64/configs/capybara_defconfig
 
     - name: Setup Droidspaces
