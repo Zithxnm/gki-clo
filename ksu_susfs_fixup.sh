@@ -133,6 +133,14 @@ fi
 if [ -f "$(dirname "$0")/fs/susfs.c" ]; then
     sed -i 's/static void susfs_run_sus_path_loop(void)/void susfs_run_sus_path_loop(void)/g' "$(dirname "$0")/fs/susfs.c"
     echo "[SUSFS-Fixup] fs/susfs.c: Made susfs_run_sus_path_loop non-static"
+    
+    # Fix double-initialization of susfs_init
+    sed -i '/void susfs_init(void)/a \
+\tstatic bool susfs_initialized = false;\
+\tif (susfs_initialized)\
+\t\treturn;\
+\tsusfs_initialized = true;' "$(dirname "$0")/fs/susfs.c"
+    echo "[SUSFS-Fixup] fs/susfs.c: Added double-initialization guard to susfs_init()"
 fi
 
 # ==========================================================================
