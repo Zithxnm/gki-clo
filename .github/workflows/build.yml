@@ -3,10 +3,10 @@ name: Build Kernel
 on:
   push:
     branches:
-      - 6.6.77-dev
+      - main
   pull_request:
     branches:
-      - 6.6.77-dev
+      - main
   workflow_dispatch:
     inputs:
       include_kernelsu:
