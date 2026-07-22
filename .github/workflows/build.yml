@@ -102,11 +102,56 @@ jobs:
         name: ${{ env.ZIP_NAME }}
         path: ${{ env.ZIP_NAME }}.zip
 
-    - name: Create Release
-      if: github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: ${{ env.ZIP_NAME }}.zip
-        name: Release ${{ env.ZIP_NAME }}
-        tag_name: ${{ env.ZIP_NAME }}-${{ github.run_id }}
-        body: "Automated build of ${{ env.ZIP_NAME }}"
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Prepare assets
+        run: |
+          mkdir -p release_assets
+          find artifacts -type f -name "*.zip" -exec mv {} release_assets/ \; || true
+
+      - name: Generate Release Body
+        run: |
+          python3 -c "
+          import os
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_num = os.environ['GITHUB_RUN_NUMBER']
+          sha = os.environ['GITHUB_SHA']
+          base_url = f'https://github.com/{repo}/releases/download/build-{run_num}-{sha}'
+          
+          try:
+              zips = [f for f in os.listdir('release_assets') if f.endswith('.zip')]
+          except FileNotFoundError:
+              zips = []
+              
+          def get_link(variant):
+              for f in zips:
+                  if variant in f:
+                      return f'[{variant}]({base_url}/{f})'
+              return '❌'
+              
+          with open('release_body.md', 'w') as f:
+              f.write('## Capybara CLO Kernel Builds\n\n')
+              f.write(f'Commit: {sha}\n\n')
+              f.write('| Variant | Powersave (100Hz) | Balance (250Hz) | Performance (500Hz) |\n')
+              f.write('|---|---|---|---|\n')
+              f.write(f'| **Vanilla** | {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Performance\")} |\n')
+              f.write(f'| **KowSU + SUSFS** | {get_link(\"KowSU-SUSFS-Powersave\")} | {get_link(\"KowSU-SUSFS-Balance\")} | {get_link(\"KowSU-SUSFS-Performance\")} |\n')
+          "
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}-${{ github.sha }}
+          name: Build ${{ github.sha }}
+          body_path: release_body.md
+          files: release_assets/*
