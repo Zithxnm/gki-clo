@@ -24,7 +24,11 @@ on:
         required: true
         type: boolean
         default: false
-
+      include_susfs_spoof_uname:
+        description: 'Enable SUSFS Uname Spoofing'
+        required: true
+        type: boolean
+        default: false
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -61,7 +65,12 @@ jobs:
         chmod +x susfs_setup.sh
         chmod +x scripts/ksu_susfs_fixup.sh
         ./susfs_setup.sh
-        
+        if [ "${{ github.event.inputs.include_susfs_spoof_uname }}" == "true" ]; then
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/capybara_defconfig
+          sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/capybara_defconfig
+        else
+          sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
+        fi
     - name: Build Kernel
       run: |
         export PATH=$(pwd)/../toolchains/clang/bin:$PATH
