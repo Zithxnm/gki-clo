@@ -19,6 +19,11 @@ on:
         required: true
         type: boolean
         default: false
+      include_susfs:
+        description: 'Build with SUSFS Support'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -50,6 +55,12 @@ jobs:
       run: |
         chmod +x droidspaces_setup.sh
         ./droidspaces_setup.sh
+    - name: Setup SUSFS
+      if: ${{ github.event.inputs.include_susfs == 'true' && github.event.inputs.include_kernelsu == 'true' }}
+      run: |
+        chmod +x susfs_setup.sh
+        chmod +x scripts/ksu_susfs_fixup.sh
+        ./susfs_setup.sh
         
     - name: Build Kernel
       run: |
@@ -69,6 +80,9 @@ jobs:
         fi
         if [ "${{ github.event.inputs.include_droidspaces }}" == "true" ]; then
           export ZIP_NAME="${ZIP_NAME}-Droidspaces"
+        fi
+        if [ "${{ github.event.inputs.include_susfs }}" == "true" ] && [ "${{ github.event.inputs.include_kernelsu }}" == "true" ]; then
+          export ZIP_NAME="${ZIP_NAME}-SUSFS"
         fi
         echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
         cp out/arch/arm64/boot/Image anykernel/
