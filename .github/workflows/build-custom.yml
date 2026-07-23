@@ -3,8 +3,22 @@ name: Build Custom Kernel
 on:
   workflow_dispatch:
     inputs:
+      toolchain:
+        description: 'Compiler Toolchain'
+        required: true
+        type: choice
+        options:
+          - neutron
+          - zyc
+          - aosp
+        default: 'neutron'
       include_kernelsu:
         description: 'Build with KowSU (KOWX712)'
+        required: true
+        type: boolean
+        default: false
+      include_nomount:
+        description: 'Build with NoMount Support'
         required: true
         type: boolean
         default: false
@@ -39,21 +53,49 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
-    
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+
+
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: custom-build-${{ github.event.inputs.timer_frequency }}
+        max-size: 5G
+
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 zstd
         
-    - name: Download and Extract Clang Toolchain
+    - name: Setup Toolchain
       run: |
         mkdir -p ../toolchains/clang
-        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-release/clang-r510928.tar.gz -O clang.tar.gz
-        tar -xf clang.tar.gz -C ../toolchains/clang
+        TOOLCHAIN="${{ github.event.inputs.toolchain }}"
+        if [ "$TOOLCHAIN" == "neutron" ]; then
+          cd ../toolchains/clang
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          ./antman --patch=glibc
+        elif [ "$TOOLCHAIN" == "zyc" ]; then
+          ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+          wget -qO zyc.tar.gz "$ZYC_URL"
+          BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+          STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+          [ "$STRIP" -lt 0 ] && STRIP=0
+          tar -xf zyc.tar.gz -C ../toolchains/clang --strip-components=$STRIP
+        else
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-release/clang-r510928.tar.gz -O clang.tar.gz
+          tar -xf clang.tar.gz -C ../toolchains/clang
+        fi
 
     - name: Configure Timer Frequency
       run: |
@@ -95,6 +137,21 @@ jobs:
         else
           sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
         fi
+    - name: Setup NoMount
+      if: ${{ github.event.inputs.include_nomount == 'true' }}
+      run: |
+        chmod +x nomount_setup.sh
+        ./nomount_setup.sh
+        echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/capybara_defconfig
+    - name: Setup ccache
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        INCLUDE_KERNELSU: ${{ github.event.inputs.include_kernelsu }}
+        CLANG_VARIANT: ${{ github.event.inputs.toolchain }}
+      run: |
+        chmod +x scripts/ccache_setup.sh
+        bash scripts/ccache_setup.sh
+
     - name: Build Kernel
       run: |
         export PATH=$(pwd)/../toolchains/clang/bin:$PATH
@@ -102,9 +159,16 @@ jobs:
         export SUBARCH=arm64
         export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
         echo "Using compiler: $KBUILD_COMPILER_STRING"
-        make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
-        make -j$(nproc --all) O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
+        make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
+        make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
         
+    - name: Save ccache
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        chmod +x scripts/ccache_save.sh
+        bash scripts/ccache_save.sh
+
     - name: Package with AnyKernel3
       run: |
         export ZIP_NAME="Capybara-CLO-Kernel"
