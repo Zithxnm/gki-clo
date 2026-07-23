@@ -383,6 +383,28 @@ int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
     void *envp, int *flags);
 #endif
 
+/*
+ * Per-process "unprivillege" flag — used by the non-tracepoint code path
+ * (#ifndef CONFIG_KSU_TRACEPOINT_HOOK) to mark processes that should skip
+ * su-compat checks.  Uses thread_info flag bit 34 (bit 33 is taken by
+ * SUSFS TIF_PROC_UMOUNTED).
+ */
+#define TIF_KSU_PROC_UNPRIVILLEGE 34
+static inline bool ksu_is_current_proc_unprivillege(void)
+{
+	return test_thread_flag(TIF_KSU_PROC_UNPRIVILLEGE);
+}
+
+static inline void ksu_set_current_proc_unprivillege(void)
+{
+	set_thread_flag(TIF_KSU_PROC_UNPRIVILLEGE);
+}
+
+static inline void ksu_clear_current_proc_unprivillege(void)
+{
+	clear_thread_flag(TIF_KSU_PROC_UNPRIVILLEGE);
+}
+
 #endif /* __KSU_H_SUCOMPAT */
 EOF
 
