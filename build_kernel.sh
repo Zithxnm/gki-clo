@@ -4,7 +4,7 @@ set -e
 # Configuration
 DIR=$(readlink -f .)
 MAIN=$(readlink -f ${DIR}/..)
-KERNEL_DEFCONFIG=capybara_defconfig
+KERNEL_DEFCONFIG=hydrochoerus_defconfig
 CLANG_DIR="$MAIN/toolchains/clang"
 KERNEL_DIR=$(pwd)
 OUT_DIR="$KERNEL_DIR/out"
@@ -71,7 +71,7 @@ make -j17 O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" || exit 1
 
 # Clean up old kernel zip files
 echo "Cleaning up old kernel zip files..."
-find "$KERNEL_DIR" -maxdepth 1 -type f -name "Capybara-CLO-*.zip" -exec rm -v {} \;
+find "$KERNEL_DIR" -maxdepth 1 -type f -name "Hydrochoerus-CLO-*.zip" -exec rm -v {} \;
 
 # Create temporary anykernel directory
 TIME=$(date "+%Y%m%d-%H%M%S")
@@ -98,7 +98,7 @@ fi
 
 # Create zip file in kernel root directory
 echo "Creating zip package..."
-ZIP_NAME="Capybara-CLO-$TIME.zip"
+ZIP_NAME="Hydrochoerus-CLO-$TIME.zip"
 cd "$TEMP_ANY_KERNEL_DIR"
 zip -r9 "$KERNEL_DIR/$ZIP_NAME" ./*
 cd ..
