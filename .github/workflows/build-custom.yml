@@ -12,11 +12,15 @@ on:
           - zyc
           - aosp
         default: 'neutron'
-      include_kernelsu:
-        description: 'Build with KowSU (KOWX712)'
+      root_manager:
+        description: 'Root Manager'
         required: true
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - none
+          - kowsu
+          - resukisu
+        default: 'none'
       include_nomount:
         description: 'Build with NoMount Support'
         required: true
@@ -64,11 +68,6 @@ jobs:
 
 
 
-    - name: Setup ccache
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: custom-build-${{ github.event.inputs.timer_frequency }}
-        max-size: 5G
 
     - name: Install Dependencies
       run: |
@@ -117,16 +116,23 @@ jobs:
           *) HZ_VAL="250"; HZ_NAME="Balance" ;;
         esac
         echo "TIMER_NAME=$HZ_NAME" >> $GITHUB_ENV
-        ./scripts/config --file arch/arm64/configs/capybara_defconfig \
+        ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
           --disable HZ_100 --disable HZ_125 --disable HZ_250 \
           --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
           --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
 
     - name: Setup KowSU
-      if: ${{ github.event.inputs.include_kernelsu == 'true' }}
+      if: ${{ github.event.inputs.root_manager == 'kowsu' }}
       run: |
         curl -ls https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh | bash -s master
-        echo "CONFIG_KSU=y" >> arch/arm64/configs/capybara_defconfig
+        echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
+
+    - name: Setup ReSukiSU
+      if: ${{ github.event.inputs.root_manager == 'resukisu' }}
+      run: |
+        chmod +x resukisu_setup.sh
+        ./resukisu_setup.sh
+        echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
 
     - name: Setup Droidspaces
       if: ${{ github.event.inputs.include_droidspaces == 'true' }}
@@ -134,27 +140,27 @@ jobs:
         chmod +x droidspaces_setup.sh
         ./droidspaces_setup.sh
     - name: Setup SUSFS
-      if: ${{ github.event.inputs.include_susfs == 'true' && github.event.inputs.include_kernelsu == 'true' }}
+      if: ${{ github.event.inputs.include_susfs == 'true' && github.event.inputs.root_manager != 'none' }}
       run: |
         chmod +x susfs_setup.sh
         chmod +x scripts/ksu_susfs_fixup.sh
-        ./susfs_setup.sh
+        ./susfs_setup.sh ${{ github.event.inputs.root_manager }}
         if [ "${{ github.event.inputs.include_susfs_spoof_uname }}" == "true" ]; then
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/capybara_defconfig
-          sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/capybara_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
         else
-          sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
+          sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
         fi
     - name: Setup NoMount
       if: ${{ github.event.inputs.include_nomount == 'true' }}
       run: |
         chmod +x nomount_setup.sh
         ./nomount_setup.sh
-        echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/capybara_defconfig
+        echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/hydrochoerus_defconfig
     - name: Setup ccache
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        INCLUDE_KERNELSU: ${{ github.event.inputs.include_kernelsu }}
+        ROOT_MANAGER: ${{ github.event.inputs.root_manager }}
         CLANG_VARIANT: ${{ github.event.inputs.toolchain }}
       run: |
         chmod +x scripts/ccache_setup.sh
@@ -167,7 +173,7 @@ jobs:
         export SUBARCH=arm64
         export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
         echo "Using compiler: $KBUILD_COMPILER_STRING"
-        make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
+        make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" hydrochoerus_defconfig
         make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
         
     - name: Save ccache
@@ -179,14 +185,17 @@ jobs:
 
     - name: Package with AnyKernel3
       run: |
-        export ZIP_NAME="Capybara-CLO-Kernel"
-        if [ "${{ github.event.inputs.include_kernelsu }}" == "true" ]; then
+        export ZIP_NAME="Hydrochoerus-CLO-Kernel"
+        if [ "${{ github.event.inputs.root_manager }}" == "kowsu" ]; then
           export ZIP_NAME="${ZIP_NAME}-KowSU"
+        fi
+        if [ "${{ github.event.inputs.root_manager }}" == "resukisu" ]; then
+          export ZIP_NAME="${ZIP_NAME}-ReSukiSU"
         fi
         if [ "${{ github.event.inputs.include_droidspaces }}" == "true" ]; then
           export ZIP_NAME="${ZIP_NAME}-Droidspaces"
         fi
-        if [ "${{ github.event.inputs.include_susfs }}" == "true" ] && [ "${{ github.event.inputs.include_kernelsu }}" == "true" ]; then
+        if [ "${{ github.event.inputs.include_susfs }}" == "true" ] && [ "${{ github.event.inputs.root_manager }}" != "none" ]; then
           export ZIP_NAME="${ZIP_NAME}-SUSFS"
         fi
         export ZIP_NAME="${ZIP_NAME}-${TIMER_NAME:-Balance}"

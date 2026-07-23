@@ -31,11 +31,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      - name: Setup ccache checkout
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: release-${{ matrix.variant.name }}
-          max-size: 5G
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -81,7 +76,7 @@ jobs:
             *) HZ_VAL="250"; HZ_NAME="Balance" ;;
           esac
           echo "TIMER_NAME=$HZ_NAME" >> $GITHUB_ENV
-          ./scripts/config --file arch/arm64/configs/capybara_defconfig \
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
             --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
@@ -89,7 +84,7 @@ jobs:
         if: ${{ matrix.variant.su == 'true' }}
         run: |
           curl -ls https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh | bash -s master
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup Droidspaces
         if: ${{ matrix.variant.droidspaces == 'true' }}
         run: |
@@ -102,21 +97,21 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/capybara_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/capybara_defconfig
+            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
           else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
+            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
           chmod +x nomount_setup.sh
           ./nomount_setup.sh
-          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INCLUDE_KERNELSU: ${{ matrix.variant.su }}
+          ROOT_MANAGER: "kowsu"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -128,7 +123,7 @@ jobs:
           export SUBARCH=arm64
           export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
           echo "Using compiler: $KBUILD_COMPILER_STRING"
-          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
+          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" hydrochoerus_defconfig
           make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
       - name: Save ccache script
         env:
@@ -138,7 +133,7 @@ jobs:
           bash scripts/ccache_save.sh
       - name: Package with AnyKernel3
         run: |
-          export ZIP_NAME="Capybara-CLO-Kernel-${{ matrix.variant.name }}"
+          export ZIP_NAME="Hydrochoerus-CLO-Kernel-${{ matrix.variant.name }}"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           cp out/arch/arm64/boot/Image anykernel/
           cd anykernel
@@ -166,11 +161,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      - name: Setup ccache checkout
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: release-${{ matrix.variant.name }}
-          max-size: 5G
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -216,7 +206,7 @@ jobs:
             *) HZ_VAL="250"; HZ_NAME="Balance" ;;
           esac
           echo "TIMER_NAME=$HZ_NAME" >> $GITHUB_ENV
-          ./scripts/config --file arch/arm64/configs/capybara_defconfig \
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
             --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
@@ -224,7 +214,7 @@ jobs:
         if: ${{ matrix.variant.su == 'true' }}
         run: |
           curl -ls https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh | bash -s master
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup Droidspaces
         if: ${{ matrix.variant.droidspaces == 'true' }}
         run: |
@@ -237,21 +227,21 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/capybara_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/capybara_defconfig
+            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
           else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
+            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
           chmod +x nomount_setup.sh
           ./nomount_setup.sh
-          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INCLUDE_KERNELSU: ${{ matrix.variant.su }}
+          ROOT_MANAGER: "kowsu"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -263,7 +253,7 @@ jobs:
           export SUBARCH=arm64
           export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
           echo "Using compiler: $KBUILD_COMPILER_STRING"
-          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
+          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" hydrochoerus_defconfig
           make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
       - name: Save ccache script
         env:
@@ -273,7 +263,269 @@ jobs:
           bash scripts/ccache_save.sh
       - name: Package with AnyKernel3
         run: |
-          export ZIP_NAME="Capybara-CLO-Kernel-${{ matrix.variant.name }}"
+          export ZIP_NAME="Hydrochoerus-CLO-Kernel-${{ matrix.variant.name }}"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          cp out/arch/arm64/boot/Image anykernel/
+          cd anykernel
+          zip -r9 ../$ZIP_NAME.zip *
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}.zip
+
+  build_rsksu_full:
+    name: Build ReSukiSU+SUSFS+NoMount+Droidspaces
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Powersave", su: "true", susfs: "true", freq: "Powersave(100hz)", droidspaces: "true", spoof: "true", nomount: "true" }
+          - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Balance", su: "true", susfs: "true", freq: "Balance(250hz)", droidspaces: "true", spoof: "true", nomount: "true" }
+          - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Smooth", su: "true", susfs: "true", freq: "Smooth(300hz)", droidspaces: "true", spoof: "true", nomount: "true" }
+          - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Performance", su: "true", susfs: "true", freq: "Performance(500hz)", droidspaces: "true", spoof: "true", nomount: "true" }
+          - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Ultra", su: "true", susfs: "true", freq: "Ultra(1000hz)", droidspaces: "true", spoof: "true", nomount: "true" }
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 zstd
+      - name: Setup Toolchain
+        run: |
+          mkdir -p ../toolchains/clang
+          TOOLCHAIN="neutron"
+          if [ "$TOOLCHAIN" == "neutron" ]; then
+            cd ../toolchains/clang
+            if curl -fLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S && ./antman --patch=glibc; then
+              echo "Neutron toolchain successfully installed"
+            else
+              echo "Neutron failed, falling back to zyc"
+              rm -rf *
+              ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+              wget -qO zyc.tar.gz "$ZYC_URL"
+              BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+              STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+              [ "$STRIP" -lt 0 ] && STRIP=0
+              tar -xf zyc.tar.gz --strip-components=$STRIP
+            fi
+          elif [ "$TOOLCHAIN" == "zyc" ]; then
+            ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+            wget -qO zyc.tar.gz "$ZYC_URL"
+            BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+            STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+            [ "$STRIP" -lt 0 ] && STRIP=0
+            tar -xf zyc.tar.gz -C ../toolchains/clang --strip-components=$STRIP
+          else
+            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-release/clang-r510928.tar.gz -O clang.tar.gz
+            tar -xf clang.tar.gz -C ../toolchains/clang
+          fi
+      - name: Configure Timer Frequency
+        run: |
+          FREQ="${{ matrix.variant.freq }}"
+          case "$FREQ" in
+            "Powersave(100hz)") HZ_VAL="100"; HZ_NAME="Powersave" ;;
+            "Balance(250hz)") HZ_VAL="250"; HZ_NAME="Balance" ;;
+            "Smooth(300hz)") HZ_VAL="300"; HZ_NAME="Smooth" ;;
+            "Performance(500hz)") HZ_VAL="500"; HZ_NAME="Performance" ;;
+            "Ultra(1000hz)") HZ_VAL="1000"; HZ_NAME="Ultra" ;;
+            *) HZ_VAL="250"; HZ_NAME="Balance" ;;
+          esac
+          echo "TIMER_NAME=$HZ_NAME" >> $GITHUB_ENV
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
+            --disable HZ_100 --disable HZ_125 --disable HZ_250 \
+            --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+      - name: Setup ReSukiSU
+        if: ${{ matrix.variant.su == 'true' }}
+        run: |
+          chmod +x resukisu_setup.sh
+          ./resukisu_setup.sh
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
+      - name: Setup Droidspaces
+        if: ${{ matrix.variant.droidspaces == 'true' }}
+        run: |
+          chmod +x droidspaces_setup.sh
+          ./droidspaces_setup.sh
+      - name: Setup SUSFS
+        if: ${{ matrix.variant.susfs == 'true' && matrix.variant.su == 'true' }}
+        run: |
+          chmod +x susfs_setup.sh
+          chmod +x scripts/ksu_susfs_fixup.sh
+          ./susfs_setup.sh resukisu
+          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
+            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
+          else
+            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
+          fi
+      - name: Setup NoMount
+        if: ${{ matrix.variant.nomount == 'true' }}
+        run: |
+          chmod +x nomount_setup.sh
+          ./nomount_setup.sh
+          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/hydrochoerus_defconfig
+      - name: Setup ccache script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROOT_MANAGER: "resukisu"
+          CLANG_VARIANT: "neutron"
+        run: |
+          chmod +x scripts/ccache_setup.sh
+          bash scripts/ccache_setup.sh
+      - name: Build Kernel
+        run: |
+          export PATH=$(pwd)/../toolchains/clang/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
+          echo "Using compiler: $KBUILD_COMPILER_STRING"
+          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" hydrochoerus_defconfig
+          make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
+      - name: Save ccache script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x scripts/ccache_save.sh
+          bash scripts/ccache_save.sh
+      - name: Package with AnyKernel3
+        run: |
+          export ZIP_NAME="Hydrochoerus-CLO-Kernel-${{ matrix.variant.name }}"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          cp out/arch/arm64/boot/Image anykernel/
+          cd anykernel
+          zip -r9 ../$ZIP_NAME.zip *
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}.zip
+
+  build_rsksu:
+    name: Build ReSukiSU
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - { name: "RSKSU-Powersave", su: "true", susfs: "false", freq: "Powersave(100hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "RSKSU-Balance", su: "true", susfs: "false", freq: "Balance(250hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "RSKSU-Smooth", su: "true", susfs: "false", freq: "Smooth(300hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "RSKSU-Performance", su: "true", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "RSKSU-Ultra", su: "true", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 zstd
+      - name: Setup Toolchain
+        run: |
+          mkdir -p ../toolchains/clang
+          TOOLCHAIN="neutron"
+          if [ "$TOOLCHAIN" == "neutron" ]; then
+            cd ../toolchains/clang
+            if curl -fLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S && ./antman --patch=glibc; then
+              echo "Neutron toolchain successfully installed"
+            else
+              echo "Neutron failed, falling back to zyc"
+              rm -rf *
+              ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+              wget -qO zyc.tar.gz "$ZYC_URL"
+              BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+              STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+              [ "$STRIP" -lt 0 ] && STRIP=0
+              tar -xf zyc.tar.gz --strip-components=$STRIP
+            fi
+          elif [ "$TOOLCHAIN" == "zyc" ]; then
+            ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+            wget -qO zyc.tar.gz "$ZYC_URL"
+            BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+            STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+            [ "$STRIP" -lt 0 ] && STRIP=0
+            tar -xf zyc.tar.gz -C ../toolchains/clang --strip-components=$STRIP
+          else
+            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-release/clang-r510928.tar.gz -O clang.tar.gz
+            tar -xf clang.tar.gz -C ../toolchains/clang
+          fi
+      - name: Configure Timer Frequency
+        run: |
+          FREQ="${{ matrix.variant.freq }}"
+          case "$FREQ" in
+            "Powersave(100hz)") HZ_VAL="100"; HZ_NAME="Powersave" ;;
+            "Balance(250hz)") HZ_VAL="250"; HZ_NAME="Balance" ;;
+            "Smooth(300hz)") HZ_VAL="300"; HZ_NAME="Smooth" ;;
+            "Performance(500hz)") HZ_VAL="500"; HZ_NAME="Performance" ;;
+            "Ultra(1000hz)") HZ_VAL="1000"; HZ_NAME="Ultra" ;;
+            *) HZ_VAL="250"; HZ_NAME="Balance" ;;
+          esac
+          echo "TIMER_NAME=$HZ_NAME" >> $GITHUB_ENV
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
+            --disable HZ_100 --disable HZ_125 --disable HZ_250 \
+            --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+      - name: Setup ReSukiSU
+        if: ${{ matrix.variant.su == 'true' }}
+        run: |
+          chmod +x resukisu_setup.sh
+          ./resukisu_setup.sh
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
+      - name: Setup Droidspaces
+        if: ${{ matrix.variant.droidspaces == 'true' }}
+        run: |
+          chmod +x droidspaces_setup.sh
+          ./droidspaces_setup.sh
+      - name: Setup SUSFS
+        if: ${{ matrix.variant.susfs == 'true' && matrix.variant.su == 'true' }}
+        run: |
+          chmod +x susfs_setup.sh
+          chmod +x scripts/ksu_susfs_fixup.sh
+          ./susfs_setup.sh resukisu
+          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
+            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
+          else
+            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
+          fi
+      - name: Setup NoMount
+        if: ${{ matrix.variant.nomount == 'true' }}
+        run: |
+          chmod +x nomount_setup.sh
+          ./nomount_setup.sh
+          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/hydrochoerus_defconfig
+      - name: Setup ccache script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROOT_MANAGER: "resukisu"
+          CLANG_VARIANT: "neutron"
+        run: |
+          chmod +x scripts/ccache_setup.sh
+          bash scripts/ccache_setup.sh
+      - name: Build Kernel
+        run: |
+          export PATH=$(pwd)/../toolchains/clang/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
+          echo "Using compiler: $KBUILD_COMPILER_STRING"
+          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" hydrochoerus_defconfig
+          make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
+      - name: Save ccache script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x scripts/ccache_save.sh
+          bash scripts/ccache_save.sh
+      - name: Package with AnyKernel3
+        run: |
+          export ZIP_NAME="Hydrochoerus-CLO-Kernel-${{ matrix.variant.name }}"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           cp out/arch/arm64/boot/Image anykernel/
           cd anykernel
@@ -301,11 +553,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      - name: Setup ccache checkout
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: release-${{ matrix.variant.name }}
-          max-size: 5G
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -351,7 +598,7 @@ jobs:
             *) HZ_VAL="250"; HZ_NAME="Balance" ;;
           esac
           echo "TIMER_NAME=$HZ_NAME" >> $GITHUB_ENV
-          ./scripts/config --file arch/arm64/configs/capybara_defconfig \
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
             --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
@@ -359,7 +606,7 @@ jobs:
         if: ${{ matrix.variant.su == 'true' }}
         run: |
           curl -ls https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh | bash -s master
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup Droidspaces
         if: ${{ matrix.variant.droidspaces == 'true' }}
         run: |
@@ -372,21 +619,21 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/capybara_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/capybara_defconfig
+            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
           else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
+            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
           chmod +x nomount_setup.sh
           ./nomount_setup.sh
-          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INCLUDE_KERNELSU: ${{ matrix.variant.su }}
+          ROOT_MANAGER: "none"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -398,7 +645,7 @@ jobs:
           export SUBARCH=arm64
           export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
           echo "Using compiler: $KBUILD_COMPILER_STRING"
-          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
+          make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" hydrochoerus_defconfig
           make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
       - name: Save ccache script
         env:
@@ -408,7 +655,7 @@ jobs:
           bash scripts/ccache_save.sh
       - name: Package with AnyKernel3
         run: |
-          export ZIP_NAME="Capybara-CLO-Kernel-${{ matrix.variant.name }}"
+          export ZIP_NAME="Hydrochoerus-CLO-Kernel-${{ matrix.variant.name }}"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           cp out/arch/arm64/boot/Image anykernel/
           cd anykernel
@@ -420,7 +667,7 @@ jobs:
           path: ${{ env.ZIP_NAME }}.zip
 
   release:
-    needs: [build_full, build_ksu, build_vanilla]
+    needs: [build_full, build_ksu, build_rsksu_full, build_rsksu, build_vanilla]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -457,7 +704,7 @@ jobs:
               return '❌'
               
           with open('release_body.md', 'w') as f:
-              f.write('## Capybara CLO Kernel Builds\n\n')
+              f.write('## Hydrochoerus CLO Kernel Builds\n\n')
               f.write(f'Commit: {sha}\n\n')
               
               f.write('### KowSU + SUSFS + NoMount + Droidspaces\n')
@@ -470,10 +717,18 @@ jobs:
               f.write('|---|---|---|---|---|\n')
               f.write(f'| {get_link(\"KSU-Powersave\")} | {get_link(\"KSU-Balance\")} | {get_link(\"KSU-Smooth\")} | {get_link(\"KSU-Performance\")} | {get_link(\"KSU-Ultra\")} |\n\n')
 
-              f.write('### Vanilla\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
-              f.write('|---|---|---|---|---|\n')
-              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\n\n')
+              f.write('### ReSukiSU + SUSFS + NoMount + Droidspaces\\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
+              f.write('|---|---|---|---|---|\\n')
+              f.write(f'| {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Powersave\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Balance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Smooth\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Performance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Ultra\")} |\\n\\n')
+              f.write('### ReSukiSU (Root Only)\\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
+              f.write('|---|---|---|---|---|\\n')
+              f.write(f'| {get_link(\"RSKSU-Powersave\")} | {get_link(\"RSKSU-Balance\")} | {get_link(\"RSKSU-Smooth\")} | {get_link(\"RSKSU-Performance\")} | {get_link(\"RSKSU-Ultra\")} |\\n\\n')
+              f.write('### Vanilla\\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
+              f.write('|---|---|---|---|---|\\n')
+              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\\n\\n')
           "
 
       - name: Create Release

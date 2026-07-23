@@ -15,7 +15,11 @@ echo "USE_CCACHE=${USE_CCACHE}" >> "$GITHUB_ENV"
 mkdir -p "$CCACHE_DIR"
 
 ACTUAL_ROOT="None"
-if [ "${INCLUDE_KERNELSU}" == "true" ]; then
+if [ "${ROOT_MANAGER}" == "kowsu" ]; then
+  ACTUAL_ROOT="KowSU"
+elif [ "${ROOT_MANAGER}" == "resukisu" ]; then
+  ACTUAL_ROOT="ReSukiSU"
+elif [ "${INCLUDE_KERNELSU}" == "true" ]; then
   ACTUAL_ROOT="KowSU"
 fi
 
