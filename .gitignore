@@ -178,3 +178,5 @@ sphinx_*/
 /rust-project.json
 
 *.zip
+AGENTS.md
+

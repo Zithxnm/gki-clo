@@ -8,7 +8,7 @@ wget -q https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Docume
 patch -p1 < 001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch
 rm 001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch
 
-DEFCONFIG="arch/arm64/configs/capybara_defconfig"
+DEFCONFIG="arch/arm64/configs/hydrochoerus_defconfig"
 
 # Append Droidspaces Configurations
 cat <<EOF >> $DEFCONFIG
