@@ -81,10 +81,18 @@ jobs:
         TOOLCHAIN="${{ github.event.inputs.toolchain }}"
         if [ "$TOOLCHAIN" == "neutron" ]; then
           cd ../toolchains/clang
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          chmod +x antman
-          ./antman -S
-          ./antman --patch=glibc
+          if curl -fLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S && ./antman --patch=glibc; then
+            echo "Neutron toolchain successfully installed"
+          else
+            echo "Neutron failed, falling back to zyc"
+            rm -rf *
+            ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+            wget -qO zyc.tar.gz "$ZYC_URL"
+            BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+            STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+            [ "$STRIP" -lt 0 ] && STRIP=0
+            tar -xf zyc.tar.gz --strip-components=$STRIP
+          fi
         elif [ "$TOOLCHAIN" == "zyc" ]; then
           ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
           wget -qO zyc.tar.gz "$ZYC_URL"
