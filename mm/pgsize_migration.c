@@ -170,14 +170,6 @@ static unsigned long __vma_pad_pages(struct vm_area_struct *vma,
 		return 0;
 
 	nr_pages = vma_pages(vma);
-<<<<<<< HEAD
-
-	/* There must be at least 1 data page in the VMA */
-	if (WARN_ON(nr_pad >= nr_pages))
-		return 0;
-
-	return nr_pad;
-=======
 	if (new)
 		nr_pages += vma_pages(new);
 
@@ -196,7 +188,6 @@ static unsigned long __vma_pad_pages(struct vm_area_struct *vma,
 unsigned long vma_pad_pages(struct vm_area_struct *vma)
 {
 	return __vma_pad_pages(vma, NULL);
->>>>>>> msm/aosp-common/android15-6.6-lts
 }
 
 static __always_inline bool str_has_suffix(const char *str, const char *suffix)
