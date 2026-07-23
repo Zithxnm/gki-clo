@@ -29,12 +29,12 @@ jobs:
           - { name: "KSU-SUSFS-NoMount-Performance", su: "true", susfs: "true", freq: "Performance(500hz)", droidspaces: "false", spoof: "true", nomount: "true" }
           - { name: "KSU-SUSFS-NoMount-Ultra", su: "true", susfs: "true", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "true", nomount: "true" }
           
-          # Vanilla + Droidspaces
-          - { name: "Vanilla-Droidspaces-Powersave", su: "false", susfs: "false", freq: "Powersave(100hz)", droidspaces: "true", spoof: "false", nomount: "false" }
-          - { name: "Vanilla-Droidspaces-Balance", su: "false", susfs: "false", freq: "Balance(250hz)", droidspaces: "true", spoof: "false", nomount: "false" }
-          - { name: "Vanilla-Droidspaces-Smooth", su: "false", susfs: "false", freq: "Smooth(300hz)", droidspaces: "true", spoof: "false", nomount: "false" }
-          - { name: "Vanilla-Droidspaces-Performance", su: "false", susfs: "false", freq: "Performance(500hz)", droidspaces: "true", spoof: "false", nomount: "false" }
-          - { name: "Vanilla-Droidspaces-Ultra", su: "false", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "true", spoof: "false", nomount: "false" }
+          # Vanilla
+          - { name: "Vanilla-Powersave", su: "false", susfs: "false", freq: "Powersave(100hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Balance", su: "false", susfs: "false", freq: "Balance(250hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Smooth", su: "false", susfs: "false", freq: "Smooth(300hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Performance", su: "false", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Ultra", su: "false", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "false", nomount: "false" }
           
           # KowSU Root Only (Without SUSFS)
           - { name: "KSU-Powersave", su: "true", susfs: "false", freq: "Powersave(100hz)", droidspaces: "false", spoof: "false", nomount: "false" }
@@ -239,10 +239,10 @@ jobs:
               f.write('|---|---|---|---|---|\n')
               f.write(f'| {get_link(\"KSU-Powersave\")} | {get_link(\"KSU-Balance\")} | {get_link(\"KSU-Smooth\")} | {get_link(\"KSU-Performance\")} | {get_link(\"KSU-Ultra\")} |\n\n')
 
-              f.write('### Vanilla + Droidspaces\n')
+              f.write('### Vanilla\n')
               f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
               f.write('|---|---|---|---|---|\n')
-              f.write(f'| {get_link(\"Vanilla-Droidspaces-Powersave\")} | {get_link(\"Vanilla-Droidspaces-Balance\")} | {get_link(\"Vanilla-Droidspaces-Smooth\")} | {get_link(\"Vanilla-Droidspaces-Performance\")} | {get_link(\"Vanilla-Droidspaces-Ultra\")} |\n\n')
+              f.write(f'| {get_link("Vanilla-Powersave")} | {get_link("Vanilla-Balance")} | {get_link("Vanilla-Smooth")} | {get_link("Vanilla-Performance")} | {get_link("Vanilla-Ultra")} |\n\n')
           "
 
       - name: Create Release
