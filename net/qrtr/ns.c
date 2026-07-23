@@ -459,15 +459,6 @@ static int ctrl_cmd_bye(struct sockaddr_qrtr *from)
 		msg.msg_namelen = sizeof(sq);
 
 		ret = kernel_sendmsg(qrtr_ns.sock, &msg, &iv, 1, sizeof(pkt));
-<<<<<<< HEAD
-		if (ret < 0 && ret != -ENODEV)
-			pr_err_ratelimited("send bye failed: [0x%x:0x%x] 0x%x ret: %d\n",
-					   srv->service, srv->instance,
-					   srv->port, ret);
-	}
-
-	return 0;
-=======
 		if (ret < 0) {
 			pr_err("failed to send bye cmd\n");
 			goto delete_node;
@@ -483,7 +474,6 @@ delete_node:
 	node_count--;
 
 	return ret;
->>>>>>> msm/aosp-common/android15-6.6-lts
 }
 
 static int ctrl_cmd_del_client(struct sockaddr_qrtr *from,

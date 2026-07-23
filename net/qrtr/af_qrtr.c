@@ -167,12 +167,8 @@ static struct work_struct qrtr_backup_work;
  * @ep: endpoint
  * @ref: reference count for node
  * @nid: node id
-<<<<<<< HEAD
  * @net_id: network cluster identifer
- * @qrtr_tx_flow: tree of qrtr_tx_flow, keyed by node << 32 | port
-=======
  * @qrtr_tx_flow: xarray of qrtr_tx_flow, keyed by node << 32 | port
->>>>>>> msm/aosp-common/android15-6.6-lts
  * @qrtr_tx_lock: lock for qrtr_tx_flow inserts
  * @hello_sent: hello packet sent to endpoint
  * @hello_rcvd: hello packet received from endpoint
