@@ -29,5 +29,5 @@ fi
 cd ..
 patch -p1 < /tmp/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch
 
-bash scripts/ksu_susfs_fixup.sh KernelSU/kernel kowsu
-echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/capybara_defconfig
+bash scripts/ksu_susfs_fixup.sh KernelSU/kernel ${1:-kowsu}
+echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/hydrochoerus_defconfig
