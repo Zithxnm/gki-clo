@@ -47,16 +47,6 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Free Disk Space
-      uses: jlumbroso/free-disk-space@main
-      with:
-        tool-cache: true
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: false
-        swap-storage: false
 
     - name: Setup ccache checkout
       uses: hendrikmuhs/ccache-action@v1.2
@@ -242,7 +232,7 @@ jobs:
               f.write('### Vanilla\n')
               f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
               f.write('|---|---|---|---|---|\n')
-              f.write(f'| {get_link("Vanilla-Powersave")} | {get_link("Vanilla-Balance")} | {get_link("Vanilla-Smooth")} | {get_link("Vanilla-Performance")} | {get_link("Vanilla-Ultra")} |\n\n')
+              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\n\n')
           "
 
       - name: Create Release
