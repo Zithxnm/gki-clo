@@ -19,13 +19,29 @@ jobs:
     permissions:
       contents: write
     strategy:
+      fail-fast: false
       matrix:
         variant:
-          - { name: "KowSU-SUSFS-Balance", su: "true", susfs: "true", freq: "Balance(250hz)", droidspaces: "false", spoof: "true" }
-          - { name: "KowSU-SUSFS-Performance", su: "true", susfs: "true", freq: "Performance(500hz)", droidspaces: "false", spoof: "true" }
-          - { name: "KowSU-SUSFS-Powersave", su: "true", susfs: "true", freq: "Powersave(100hz)", droidspaces: "false", spoof: "true" }
-          - { name: "Vanilla-Balance", su: "false", susfs: "false", freq: "Balance(250hz)", droidspaces: "false", spoof: "false" }
-          - { name: "Vanilla-Performance", su: "false", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false" }
+          # KowSU + SUSFS + Spoof + NoMount
+          - { name: "KSU-SUSFS-NoMount-Powersave", su: "true", susfs: "true", freq: "Powersave(100hz)", droidspaces: "false", spoof: "true", nomount: "true" }
+          - { name: "KSU-SUSFS-NoMount-Balance", su: "true", susfs: "true", freq: "Balance(250hz)", droidspaces: "false", spoof: "true", nomount: "true" }
+          - { name: "KSU-SUSFS-NoMount-Smooth", su: "true", susfs: "true", freq: "Smooth(300hz)", droidspaces: "false", spoof: "true", nomount: "true" }
+          - { name: "KSU-SUSFS-NoMount-Performance", su: "true", susfs: "true", freq: "Performance(500hz)", droidspaces: "false", spoof: "true", nomount: "true" }
+          - { name: "KSU-SUSFS-NoMount-Ultra", su: "true", susfs: "true", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "true", nomount: "true" }
+          
+          # Vanilla + Droidspaces
+          - { name: "Vanilla-Droidspaces-Powersave", su: "false", susfs: "false", freq: "Powersave(100hz)", droidspaces: "true", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Droidspaces-Balance", su: "false", susfs: "false", freq: "Balance(250hz)", droidspaces: "true", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Droidspaces-Smooth", su: "false", susfs: "false", freq: "Smooth(300hz)", droidspaces: "true", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Droidspaces-Performance", su: "false", susfs: "false", freq: "Performance(500hz)", droidspaces: "true", spoof: "false", nomount: "false" }
+          - { name: "Vanilla-Droidspaces-Ultra", su: "false", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "true", spoof: "false", nomount: "false" }
+          
+          # KowSU Root Only (Without SUSFS)
+          - { name: "KSU-Powersave", su: "true", susfs: "false", freq: "Powersave(100hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "KSU-Balance", su: "true", susfs: "false", freq: "Balance(250hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "KSU-Smooth", su: "true", susfs: "false", freq: "Smooth(300hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "KSU-Performance", su: "true", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false", nomount: "false" }
+          - { name: "KSU-Ultra", su: "true", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "false", nomount: "false" }
     
     steps:
     - name: Checkout Repository
@@ -42,10 +58,10 @@ jobs:
         docker-images: false
         swap-storage: false
 
-    - name: Setup ccache
+    - name: Setup ccache checkout
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: ${{ matrix.variant.name }}
+        key: release-${{ matrix.variant.name }}
         max-size: 5G
 
     - name: Install Dependencies
@@ -59,10 +75,18 @@ jobs:
         TOOLCHAIN="neutron"
         if [ "$TOOLCHAIN" == "neutron" ]; then
           cd ../toolchains/clang
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          chmod +x antman
-          ./antman -S
-          ./antman --patch=glibc
+          if curl -fLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S && ./antman --patch=glibc; then
+            echo "Neutron toolchain successfully installed"
+          else
+            echo "Neutron failed, falling back to zyc"
+            rm -rf *
+            ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+            wget -qO zyc.tar.gz "$ZYC_URL"
+            BIN_PATH=$(tar -tf zyc.tar.gz | grep -m1 'bin/clang$')
+            STRIP=$(($(echo "$BIN_PATH" | tr '/' '\n' | wc -l) - 2))
+            [ "$STRIP" -lt 0 ] && STRIP=0
+            tar -xf zyc.tar.gz --strip-components=$STRIP
+          fi
         elif [ "$TOOLCHAIN" == "zyc" ]; then
           ZYC_URL=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
           wget -qO zyc.tar.gz "$ZYC_URL"
@@ -103,6 +127,7 @@ jobs:
       run: |
         chmod +x droidspaces_setup.sh
         ./droidspaces_setup.sh
+
     - name: Setup SUSFS
       if: ${{ matrix.variant.susfs == 'true' && matrix.variant.su == 'true' }}
       run: |
@@ -115,6 +140,23 @@ jobs:
         else
           sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/capybara_defconfig
         fi
+
+    - name: Setup NoMount
+      if: ${{ matrix.variant.nomount == 'true' }}
+      run: |
+        chmod +x nomount_setup.sh
+        ./nomount_setup.sh
+        echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/capybara_defconfig
+
+    - name: Setup ccache script
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        INCLUDE_KERNELSU: ${{ matrix.variant.su }}
+        CLANG_VARIANT: "neutron"
+      run: |
+        chmod +x scripts/ccache_setup.sh
+        bash scripts/ccache_setup.sh
+
     - name: Build Kernel
       run: |
         export PATH=$(pwd)/../toolchains/clang/bin:$PATH
@@ -125,6 +167,13 @@ jobs:
         make O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
         make -j$(nproc --all) O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
         
+    - name: Save ccache script
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        chmod +x scripts/ccache_save.sh
+        bash scripts/ccache_save.sh
+
     - name: Package with AnyKernel3
       run: |
         export ZIP_NAME="Capybara-CLO-Kernel-${{ matrix.variant.name }}"
@@ -173,16 +222,27 @@ jobs:
           def get_link(variant):
               for f in zips:
                   if variant in f:
-                      return f'[{variant}]({base_url}/{f})'
+                      return f'[Download]({base_url}/{f})'
               return '❌'
               
           with open('release_body.md', 'w') as f:
               f.write('## Capybara CLO Kernel Builds\n\n')
               f.write(f'Commit: {sha}\n\n')
-              f.write('| Variant | Powersave (100Hz) | Balance (250Hz) | Performance (500Hz) |\n')
-              f.write('|---|---|---|---|\n')
-              f.write(f'| **Vanilla** | {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Performance\")} |\n')
-              f.write(f'| **KowSU + SUSFS** | {get_link(\"KowSU-SUSFS-Powersave\")} | {get_link(\"KowSU-SUSFS-Balance\")} | {get_link(\"KowSU-SUSFS-Performance\")} |\n')
+              
+              f.write('### KowSU + SUSFS + NoMount\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"KSU-SUSFS-NoMount-Powersave\")} | {get_link(\"KSU-SUSFS-NoMount-Balance\")} | {get_link(\"KSU-SUSFS-NoMount-Smooth\")} | {get_link(\"KSU-SUSFS-NoMount-Performance\")} | {get_link(\"KSU-SUSFS-NoMount-Ultra\")} |\n\n')
+
+              f.write('### KowSU (Root Only)\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"KSU-Powersave\")} | {get_link(\"KSU-Balance\")} | {get_link(\"KSU-Smooth\")} | {get_link(\"KSU-Performance\")} | {get_link(\"KSU-Ultra\")} |\n\n')
+
+              f.write('### Vanilla + Droidspaces\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"Vanilla-Droidspaces-Powersave\")} | {get_link(\"Vanilla-Droidspaces-Balance\")} | {get_link(\"Vanilla-Droidspaces-Smooth\")} | {get_link(\"Vanilla-Droidspaces-Performance\")} | {get_link(\"Vanilla-Droidspaces-Ultra\")} |\n\n')
           "
 
       - name: Create Release
