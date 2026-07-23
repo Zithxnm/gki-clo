@@ -111,7 +111,7 @@ jobs:
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ROOT_MANAGER: "kowsu"
+          ROOT_MANAGER: "kowsu-full"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -372,7 +372,7 @@ jobs:
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ROOT_MANAGER: "resukisu"
+          ROOT_MANAGER: "resukisu-full"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -633,7 +633,7 @@ jobs:
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ROOT_MANAGER: "none"
+          ROOT_MANAGER: "vanilla"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -717,18 +717,18 @@ jobs:
               f.write('|---|---|---|---|---|\n')
               f.write(f'| {get_link(\"KSU-Powersave\")} | {get_link(\"KSU-Balance\")} | {get_link(\"KSU-Smooth\")} | {get_link(\"KSU-Performance\")} | {get_link(\"KSU-Ultra\")} |\n\n')
 
-              f.write('### ReSukiSU + SUSFS + NoMount + Droidspaces\\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
-              f.write('|---|---|---|---|---|\\n')
-              f.write(f'| {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Powersave\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Balance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Smooth\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Performance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Ultra\")} |\\n\\n')
-              f.write('### ReSukiSU (Root Only)\\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
-              f.write('|---|---|---|---|---|\\n')
-              f.write(f'| {get_link(\"RSKSU-Powersave\")} | {get_link(\"RSKSU-Balance\")} | {get_link(\"RSKSU-Smooth\")} | {get_link(\"RSKSU-Performance\")} | {get_link(\"RSKSU-Ultra\")} |\\n\\n')
-              f.write('### Vanilla\\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
-              f.write('|---|---|---|---|---|\\n')
-              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\\n\\n')
+              f.write('### ReSukiSU + SUSFS + NoMount + Droidspaces\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Powersave\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Balance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Smooth\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Performance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Ultra\")} |\n\n')
+              f.write('### ReSukiSU (Root Only)\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"RSKSU-Powersave\")} | {get_link(\"RSKSU-Balance\")} | {get_link(\"RSKSU-Smooth\")} | {get_link(\"RSKSU-Performance\")} | {get_link(\"RSKSU-Ultra\")} |\n\n')
+              f.write('### Vanilla\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\n\n')
           "
 
       - name: Create Release
