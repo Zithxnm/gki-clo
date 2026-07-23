@@ -508,6 +508,7 @@
   devlink_register
   devlink_unregister
   dev_load
+  dev_lstats_read
   __devm_add_action
   devm_alloc_etherdev_mqs
   __devm_alloc_percpu
@@ -797,6 +798,8 @@
   __drm_atomic_helper_connector_destroy_state
   __drm_atomic_helper_connector_duplicate_state
   drm_atomic_helper_connector_duplicate_state
+  drm_atomic_helper_connector_duplicate_state
+  __drm_atomic_helper_connector_duplicate_state
   drm_atomic_helper_connector_reset
   __drm_atomic_helper_connector_reset
   __drm_atomic_helper_crtc_destroy_state
@@ -1603,8 +1606,8 @@
   mdiobus_c45_write
   mdiobus_free
   mdiobus_get_phy
-  __mdiobus_read
   mdiobus_read
+  __mdiobus_read
   __mdiobus_register
   mdiobus_unregister
   mdiobus_write
@@ -3723,9 +3726,11 @@
   vring_transport_features
   vscnprintf
   vsnprintf
+  vsock_add_tap
   vsock_core_register
   vsock_core_unregister
   vsock_for_each_connected_socket
+  vsock_remove_tap
   vsprintf
   vunmap
   vzalloc
