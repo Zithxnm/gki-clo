@@ -186,7 +186,8 @@ jobs:
         chmod +x scripts/ksu_susfs_fixup.sh
         ./susfs_setup.sh ${{ github.event.inputs.root_manager }}
         if [ "${{ github.event.inputs.include_susfs_spoof_uname }}" == "true" ]; then
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
         fi
     - name: Setup NoMount
       if: ${{ github.event.inputs.include_nomount == 'true' }}

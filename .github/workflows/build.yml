@@ -109,7 +109,8 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -248,7 +249,8 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -388,7 +390,8 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh resukisu
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -528,7 +531,8 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh resukisu
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -667,7 +671,8 @@ jobs:
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
