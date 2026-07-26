@@ -57,6 +57,14 @@ on:
           - Performance(500hz)
           - Ultra(1000hz)
         default: 'Balance(250hz)'
+      lto:
+        description: 'Link Time Optimization (LTO)'
+        required: true
+        type: choice
+        options:
+          - ThinLTO
+          - FullLTO
+        default: 'ThinLTO'
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -136,6 +144,17 @@ jobs:
           --disable HZ_100 --disable HZ_125 --disable HZ_250 \
           --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
           --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+
+    - name: Configure LTO
+      run: |
+        LTO_VAL="${{ github.event.inputs.lto }}"
+        if [ "$LTO_VAL" == "FullLTO" ]; then
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
+            --disable LTO_NONE --disable LTO_CLANG_THIN --enable LTO_CLANG_FULL
+        else
+          ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
+            --disable LTO_NONE --disable LTO_CLANG_FULL --enable LTO_CLANG_THIN
+        fi
 
     - name: Configure Localversion
       if: ${{ github.event.inputs.localversion != '' }}

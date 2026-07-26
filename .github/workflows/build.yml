@@ -90,7 +90,8 @@ jobs:
           ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
-            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL \
+            --disable LTO_NONE --disable LTO_CLANG_THIN --enable LTO_CLANG_FULL
       - name: Setup KowSU
         if: ${{ matrix.variant.su == 'true' }}
         run: |
@@ -228,7 +229,8 @@ jobs:
           ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
-            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL \
+            --disable LTO_NONE --disable LTO_CLANG_THIN --enable LTO_CLANG_FULL
       - name: Setup KowSU
         if: ${{ matrix.variant.su == 'true' }}
         run: |
@@ -366,7 +368,8 @@ jobs:
           ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
-            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL \
+            --disable LTO_NONE --disable LTO_CLANG_THIN --enable LTO_CLANG_FULL
       - name: Setup ReSukiSU
         if: ${{ matrix.variant.su == 'true' }}
         run: |
@@ -505,7 +508,8 @@ jobs:
           ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
-            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL \
+            --disable LTO_NONE --disable LTO_CLANG_THIN --enable LTO_CLANG_FULL
       - name: Setup ReSukiSU
         if: ${{ matrix.variant.su == 'true' }}
         run: |
@@ -644,7 +648,8 @@ jobs:
           ./scripts/config --file arch/arm64/configs/hydrochoerus_defconfig \
             --disable HZ_100 --disable HZ_125 --disable HZ_250 \
             --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
-            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+            --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL \
+            --disable LTO_NONE --disable LTO_CLANG_THIN --enable LTO_CLANG_FULL
       - name: Setup KowSU
         if: ${{ matrix.variant.su == 'true' }}
         run: |
