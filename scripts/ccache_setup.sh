@@ -17,13 +17,20 @@ mkdir -p "$CCACHE_DIR"
 ACTUAL_ROOT="None"
 if [ "${ROOT_MANAGER}" == "kowsu" ]; then
   ACTUAL_ROOT="KowSU"
+elif [ "${ROOT_MANAGER}" == "kowsu-full" ]; then
+  ACTUAL_ROOT="KowSU-Full"
 elif [ "${ROOT_MANAGER}" == "resukisu" ]; then
   ACTUAL_ROOT="ReSukiSU"
+elif [ "${ROOT_MANAGER}" == "resukisu-full" ]; then
+  ACTUAL_ROOT="ReSukiSU-Full"
+elif [ "${ROOT_MANAGER}" == "vanilla" ]; then
+  ACTUAL_ROOT="Vanilla"
 elif [ "${INCLUDE_KERNELSU}" == "true" ]; then
   ACTUAL_ROOT="KowSU"
 fi
 
-CCACHE_ASSET="ccache-${ACTUAL_ROOT}-${CLANG_VARIANT}.tar.zst"
+TIMER_SUFFIX="${TIMER_NAME:-Default}"
+CCACHE_ASSET="ccache-${ACTUAL_ROOT}-${CLANG_VARIANT}-${TIMER_SUFFIX}.tar.zst"
 CCACHE_TAG="ccache-store"
 CCACHE_REPO="Zithxnm/gki-clo"
 

@@ -29,6 +29,17 @@ jobs:
           - { name: "KSU-SUSFS-NoMount-Droidspaces-Performance", su: "true", susfs: "true", freq: "Performance(500hz)", droidspaces: "true", spoof: "true", nomount: "true" }
           - { name: "KSU-SUSFS-NoMount-Droidspaces-Ultra", su: "true", susfs: "true", freq: "Ultra(1000hz)", droidspaces: "true", spoof: "true", nomount: "true" }
     steps:
+      - name: Create Swap Space
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install Dependencies
@@ -98,9 +109,6 @@ jobs:
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
             sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
-          else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -111,7 +119,7 @@ jobs:
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ROOT_MANAGER: "kowsu"
+          ROOT_MANAGER: "kowsu-full"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -159,6 +167,17 @@ jobs:
           - { name: "KSU-Performance", su: "true", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false", nomount: "false" }
           - { name: "KSU-Ultra", su: "true", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "false", nomount: "false" }
     steps:
+      - name: Create Swap Space
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install Dependencies
@@ -228,9 +247,6 @@ jobs:
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
             sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
-          else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -289,6 +305,17 @@ jobs:
           - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Performance", su: "true", susfs: "true", freq: "Performance(500hz)", droidspaces: "true", spoof: "true", nomount: "true" }
           - { name: "RSKSU-SUSFS-NoMount-Droidspaces-Ultra", su: "true", susfs: "true", freq: "Ultra(1000hz)", droidspaces: "true", spoof: "true", nomount: "true" }
     steps:
+      - name: Create Swap Space
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install Dependencies
@@ -359,9 +386,6 @@ jobs:
           ./susfs_setup.sh resukisu
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
             sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
-          else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -372,7 +396,7 @@ jobs:
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ROOT_MANAGER: "resukisu"
+          ROOT_MANAGER: "resukisu-full"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -420,6 +444,17 @@ jobs:
           - { name: "RSKSU-Performance", su: "true", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false", nomount: "false" }
           - { name: "RSKSU-Ultra", su: "true", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "false", nomount: "false" }
     steps:
+      - name: Create Swap Space
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install Dependencies
@@ -490,9 +525,6 @@ jobs:
           ./susfs_setup.sh resukisu
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
             sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
-          else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -551,6 +583,17 @@ jobs:
           - { name: "Vanilla-Performance", su: "false", susfs: "false", freq: "Performance(500hz)", droidspaces: "false", spoof: "false", nomount: "false" }
           - { name: "Vanilla-Ultra", su: "false", susfs: "false", freq: "Ultra(1000hz)", droidspaces: "false", spoof: "false", nomount: "false" }
     steps:
+      - name: Create Swap Space
+        run: |
+          SWAPFILE="/mnt/build_swapfile"
+          while true; do
+            if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+              break
+            else
+              sleep 5
+            fi
+          done
+          sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install Dependencies
@@ -620,9 +663,6 @@ jobs:
           ./susfs_setup.sh
           if [ "${{ matrix.variant.spoof }}" == "true" ]; then
             sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
-            sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
-          else
-            sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
           fi
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
@@ -633,7 +673,7 @@ jobs:
       - name: Setup ccache script
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ROOT_MANAGER: "none"
+          ROOT_MANAGER: "vanilla"
           CLANG_VARIANT: "neutron"
         run: |
           chmod +x scripts/ccache_setup.sh
@@ -671,6 +711,7 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -717,18 +758,18 @@ jobs:
               f.write('|---|---|---|---|---|\n')
               f.write(f'| {get_link(\"KSU-Powersave\")} | {get_link(\"KSU-Balance\")} | {get_link(\"KSU-Smooth\")} | {get_link(\"KSU-Performance\")} | {get_link(\"KSU-Ultra\")} |\n\n')
 
-              f.write('### ReSukiSU + SUSFS + NoMount + Droidspaces\\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
-              f.write('|---|---|---|---|---|\\n')
-              f.write(f'| {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Powersave\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Balance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Smooth\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Performance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Ultra\")} |\\n\\n')
-              f.write('### ReSukiSU (Root Only)\\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
-              f.write('|---|---|---|---|---|\\n')
-              f.write(f'| {get_link(\"RSKSU-Powersave\")} | {get_link(\"RSKSU-Balance\")} | {get_link(\"RSKSU-Smooth\")} | {get_link(\"RSKSU-Performance\")} | {get_link(\"RSKSU-Ultra\")} |\\n\\n')
-              f.write('### Vanilla\\n')
-              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\\n')
-              f.write('|---|---|---|---|---|\\n')
-              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\\n\\n')
+              f.write('### ReSukiSU + SUSFS + NoMount + Droidspaces\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Powersave\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Balance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Smooth\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Performance\")} | {get_link(\"RSKSU-SUSFS-NoMount-Droidspaces-Ultra\")} |\n\n')
+              f.write('### ReSukiSU (Root Only)\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"RSKSU-Powersave\")} | {get_link(\"RSKSU-Balance\")} | {get_link(\"RSKSU-Smooth\")} | {get_link(\"RSKSU-Performance\")} | {get_link(\"RSKSU-Ultra\")} |\n\n')
+              f.write('### Vanilla\n')
+              f.write('| 100Hz | 250Hz | 300Hz | 500Hz | 1000Hz |\n')
+              f.write('|---|---|---|---|---|\n')
+              f.write(f'| {get_link(\"Vanilla-Powersave\")} | {get_link(\"Vanilla-Balance\")} | {get_link(\"Vanilla-Smooth\")} | {get_link(\"Vanilla-Performance\")} | {get_link(\"Vanilla-Ultra\")} |\n\n')
           "
 
       - name: Create Release

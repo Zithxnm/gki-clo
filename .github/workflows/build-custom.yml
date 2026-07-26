@@ -63,6 +63,17 @@ jobs:
       cancel-in-progress: true
 
     steps:
+    - name: Create Swap Space
+      run: |
+        SWAPFILE="/mnt/build_swapfile"
+        while true; do
+          if sudo fallocate -l 10G $SWAPFILE || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=10240 status=progress; then
+            break
+          else
+            sleep 5
+          fi
+        done
+        sudo chmod 600 $SWAPFILE && sudo mkswap $SWAPFILE && sudo swapon $SWAPFILE
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -147,9 +158,6 @@ jobs:
         ./susfs_setup.sh ${{ github.event.inputs.root_manager }}
         if [ "${{ github.event.inputs.include_susfs_spoof_uname }}" == "true" ]; then
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
-          sed -i '$a CONFIG_KSU_SUSFS_SPOOF_UNAME=y' arch/arm64/configs/hydrochoerus_defconfig
-        else
-          sed -i '$a # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set' arch/arm64/configs/hydrochoerus_defconfig
         fi
     - name: Setup NoMount
       if: ${{ github.event.inputs.include_nomount == 'true' }}
