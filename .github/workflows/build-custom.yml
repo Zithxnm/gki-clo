@@ -3,6 +3,11 @@ name: Build Custom Kernel
 on:
   workflow_dispatch:
     inputs:
+      localversion:
+        description: 'Kernel Local Version String'
+        required: true
+        type: string
+        default: '-hydrochoerus-clo-v1.0'
       toolchain:
         description: 'Compiler Toolchain'
         required: true
@@ -131,6 +136,11 @@ jobs:
           --disable HZ_100 --disable HZ_125 --disable HZ_250 \
           --disable HZ_300 --disable HZ_500 --disable HZ_1000 \
           --enable HZ_$HZ_VAL --set-val HZ $HZ_VAL
+
+    - name: Configure Localversion
+      if: ${{ github.event.inputs.localversion != '' }}
+      run: |
+        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"${{ github.event.inputs.localversion }}\"/g' arch/arm64/configs/hydrochoerus_defconfig
 
     - name: Setup KowSU
       if: ${{ github.event.inputs.root_manager == 'kowsu' }}
