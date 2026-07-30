@@ -108,10 +108,11 @@ jobs:
           chmod +x susfs_setup.sh
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
-          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
-          fi
+      - name: Kernel naming setup
+        if: ${{ matrix.variant.spoof == 'true' }}
+        run: |
+          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -248,10 +249,11 @@ jobs:
           chmod +x susfs_setup.sh
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
-          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
-          fi
+      - name: Kernel naming setup
+        if: ${{ matrix.variant.spoof == 'true' }}
+        run: |
+          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -389,10 +391,11 @@ jobs:
           chmod +x susfs_setup.sh
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh resukisu
-          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
-          fi
+      - name: Kernel naming setup
+        if: ${{ matrix.variant.spoof == 'true' }}
+        run: |
+          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -530,10 +533,11 @@ jobs:
           chmod +x susfs_setup.sh
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh resukisu
-          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
-          fi
+      - name: Kernel naming setup
+        if: ${{ matrix.variant.spoof == 'true' }}
+        run: |
+          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -670,10 +674,11 @@ jobs:
           chmod +x susfs_setup.sh
           chmod +x scripts/ksu_susfs_fixup.sh
           ./susfs_setup.sh
-          if [ "${{ matrix.variant.spoof }}" == "true" ]; then
-            ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
-          fi
+      - name: Kernel naming setup
+        if: ${{ matrix.variant.spoof == 'true' }}
+        run: |
+          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
+          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
