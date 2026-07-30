@@ -161,6 +161,12 @@ jobs:
       run: |
         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"${{ github.event.inputs.localversion }}\"/g' arch/arm64/configs/hydrochoerus_defconfig
 
+    - name: Kernel naming setup
+      if: ${{ github.event.inputs.include_susfs_spoof_uname == 'true' }}
+      run: |
+        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+        sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/hydrochoerus_defconfig
+
     - name: Setup KowSU
       if: ${{ github.event.inputs.root_manager == 'kowsu' }}
       run: |
@@ -185,11 +191,6 @@ jobs:
         chmod +x susfs_setup.sh
         chmod +x scripts/ksu_susfs_fixup.sh
         ./susfs_setup.sh ${{ github.event.inputs.root_manager }}
-    - name: Kernel naming setup
-      if: ${{ github.event.inputs.include_susfs_spoof_uname == 'true' }}
-      run: |
-        ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-        sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
     - name: Setup NoMount
       if: ${{ github.event.inputs.include_nomount == 'true' }}
       run: |

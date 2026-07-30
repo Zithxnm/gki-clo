@@ -111,8 +111,8 @@ jobs:
       - name: Kernel naming setup
         if: ${{ matrix.variant.spoof == 'true' }}
         run: |
-          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -252,8 +252,8 @@ jobs:
       - name: Kernel naming setup
         if: ${{ matrix.variant.spoof == 'true' }}
         run: |
-          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -394,8 +394,8 @@ jobs:
       - name: Kernel naming setup
         if: ${{ matrix.variant.spoof == 'true' }}
         run: |
-          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -536,8 +536,8 @@ jobs:
       - name: Kernel naming setup
         if: ${{ matrix.variant.spoof == 'true' }}
         run: |
-          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
@@ -677,8 +677,8 @@ jobs:
       - name: Kernel naming setup
         if: ${{ matrix.variant.spoof == 'true' }}
         run: |
-          ACK_HASH=$(head -n 1 android/ACK_SHA | cut -c 1-12)
-          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-android15-6.6-g${ACK_HASH}\"/g" arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/hydrochoerus_defconfig
+          sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/hydrochoerus_defconfig
       - name: Setup NoMount
         if: ${{ matrix.variant.nomount == 'true' }}
         run: |
